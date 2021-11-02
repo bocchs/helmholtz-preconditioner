@@ -12,11 +12,24 @@
 \maketitle
 
 \section{Introduction}
-The Helmholtz equation defined as $\Delta u(x) + \frac{\omega^2}{c^2(x)}u(x)=f(x)$ is a time-independent factorization of the wave equation, where $w$ is angular frequency, $c(x)$ is the velocity field, and $f(x)$ is the external force. Many different approaches exist for numerically solving the Helmholtz equation in a discretized system. 
+The Helmholtz equation defined as $\Delta u(x) + \frac{\omega^2}{c^2(x)}u(x)=f(x)$ 
+is a time-independent factorization of the wave equation, where $w$ is angular 
+frequency, $c(x)$ is the velocity field, and $f(x)$ is the external force. 
+Many different approaches exist for numerically solving the Helmholtz equation 
+in a discretized system. 
 
-The frontal solver \cite{irons1970frontal} is a direct method for solving sparse systems in a manner similar to Gaussian elimination. The frontal solver extracts small blocks (fronts) within the sparse $A$ matrix for eliminating variables/equations. The multifrontal solver \cite{duff1983multifrontal} extends this method to process multiple independent fronts in parallel. For a 2D problem with $N=n^2$ unknowns, the multifrontal method takes $O(N^{3/2})$ time and $O(N \log N)$ space. The method becomes inefficient for 3D problems with $N=n^3$ unknowns, where it takes $O(N^2)$ time and $O(N^{4/3})$ space \cite{engquist2011matrix}. Direct methods also suffer from fill-in \cite{erlangga2008advances} that occurs during the Gaussian elimination process.
+The frontal solver \cite{irons1970frontal} is a direct method for solving sparse 
+systems in a manner similar to Gaussian elimination. The frontal solver extracts 
+small blocks (fronts) within the sparse $A$ matrix for eliminating variables/equations. 
+The multifrontal solver \cite{duff1983multifrontal} extends this method to process 
+multiple independent fronts in parallel. For a 2D problem with $N=n^2$ unknowns, 
+the multifrontal method takes $O(N^{3/2})$ time and $O(N \log N)$ space. The method 
+becomes inefficient for 3D problems with $N=n^3$ unknowns, where it takes $O(N^2)$ 
+time and $O(N^{4/3})$ space \cite{engquist2011matrix}. Direct methods also suffer 
+from fill-in \cite{erlangga2008advances} that occurs during the Gaussian elimination process.
 
-Iterative methods are an alternative approach that have a small memory requirement. They require preconditioning due to the Helmholtz system's indefiniteness. 
+Iterative methods are an alternative approach that have a small memory requirement. 
+They require preconditioning due to the Helmholtz system's indefiniteness. 
 
 
 
