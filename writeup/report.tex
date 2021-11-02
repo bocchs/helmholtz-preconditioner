@@ -1,6 +1,7 @@
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath}
+\usepackage{xcolor}
 \usepackage[a4paper, total={6in, 8in}]{geometry}
 
 \title{\vspace{-4.0cm}Sweeping Preconditioner with Moving Perfectly Matched Layer for the Helmholtz Equation}
@@ -18,22 +19,38 @@ frequency, $c(x)$ is the velocity field, and $f(x)$ is the external force.
 Many different approaches exist for numerically solving the Helmholtz equation 
 in a discretized system. 
 
+Boundary conditions must be handled properly when numerically solving a 
+wave equation on a finite grid. The Sommerfeld condition for waves that propagate to an 
+infinite distance is not satisfied when computing on a finite domain. This leads to 
+non-physical reflections at the boundaries \cite{erlangga2008advances}. The typical 
+correction is to impose absorbing boundary conditions. The perfectly matched layer (PML) 
+\cite{berenger1994perfectly} is one common method for absorbing waves at the boundaries. 
+The PML method adds a damping region around the original domain (or within it) and 
+accordingly modifies the equation we are solving (Helmholtz). The PML reduces non-physical
+reflections and provides a more favorable system to solve for, but it also adds
+computational cost.
+
+Certain iterative methods can be applied for solving the Helmholtz equation. They require 
+preconditioning due to the Helmholtz system's indefiniteness. The methods in 
+\cite{engquist2011pml} and \cite{engquist2011matrix} apply a sweeping preconditioner and
+iteratively solve the system using GMRES \cite{saad1986gmres}. Both methods use the PML to arrive
+at initial system. Their key observation is that the system can be factorized into a form
+where \textcolor{red}{block matrices correspond to Green's function and are highly compressible.}
+In \cite{engquist2011matrix}, these matrices are approximated using the hierarchical matrices. 
+In \cite{engquist2011pml}, these matrices are represented by inverting a Helmholtz system with 
+a moving PML. Both methods take $O(N)$ time, thereby improving on direct methods described in 
+the following paragraph.
+
 The frontal solver \cite{irons1970frontal} is a direct method for solving sparse 
 systems in a manner similar to Gaussian elimination. The frontal solver extracts 
 small blocks (fronts) within the sparse $A$ matrix for eliminating variables/equations. 
 The multifrontal solver \cite{duff1983multifrontal} extends this method to process 
-multiple independent fronts in parallel. For a 2D problem with $N=n^2$ unknowns, 
+multiple independent fronts in parallel. For a 2D Helmholtz problem with $N=n^2$ unknowns, 
 the multifrontal method takes $O(N^{3/2})$ time and $O(N \log N)$ space. The method 
 becomes inefficient for 3D problems with $N=n^3$ unknowns, where it takes $O(N^2)$ 
 time and $O(N^{4/3})$ space \cite{engquist2011matrix}. Direct methods also suffer 
 from fill-in \cite{erlangga2008advances} that occurs during the Gaussian elimination process.
 
-Iterative methods are an alternative approach that have a small memory requirement. 
-They require preconditioning due to the Helmholtz system's indefiniteness. 
-
-
-
-\cite{engquist2011pml} \cite{engquist2011matrix}
 
 
 
