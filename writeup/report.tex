@@ -26,21 +26,24 @@ non-physical reflections at the boundaries \cite{erlangga2008advances}. The typi
 correction is to impose absorbing boundary conditions. The perfectly matched layer (PML) 
 \cite{berenger1994perfectly} is one common method for absorbing waves at the boundaries. 
 The PML method adds a damping region around the original domain (or within it) and 
-accordingly modifies the equation we are solving (Helmholtz). The PML reduces non-physical
+accordingly modifies the equation we are solving. The PML reduces non-physical
 reflections and provides a more favorable system to solve for, but it also adds
 computational cost.
+
+% \textcolor{red}{need higher $n$ for higher frequency in previous methods.}
 
 Certain iterative methods can be applied for solving the Helmholtz equation. They require 
 preconditioning due to the Helmholtz system's indefiniteness. The methods in 
 \cite{engquist2011pml} and \cite{engquist2011matrix} apply a sweeping preconditioner and
 iteratively solve the system using GMRES \cite{saad1986gmres}. Both methods use the PML to arrive
 at initial system. Their key observation is that the system can be factorized into a form
-where \textcolor{red}{block matrices correspond to Green's function and are highly compressible.}
+where block matrices correspond to the Helmholtz Green's function and are highly compressible.
 In \cite{engquist2011matrix}, these matrices are approximated using the hierarchical matrices. 
 In \cite{engquist2011pml}, these matrices are represented by inverting a Helmholtz system with 
-a moving PML. Both methods take $O(N)$ time, thereby improving on direct methods described in 
-the following paragraph.
+a moving PML. In 2D, both methods take $O(N)$ time. %, thereby improving on direct methods described in the following paragraph.
 
+%%%%%%%%%%% commented this out %%%%%%%%%%
+\iffalse
 The frontal solver \cite{irons1970frontal} is a direct method for solving sparse 
 systems in a manner similar to Gaussian elimination. The frontal solver extracts 
 small blocks (fronts) within the sparse $A$ matrix for eliminating variables/equations. 
@@ -50,6 +53,32 @@ the multifrontal method takes $O(N^{3/2})$ time and $O(N \log N)$ space. The met
 becomes inefficient for 3D problems with $N=n^3$ unknowns, where it takes $O(N^2)$ 
 time and $O(N^{4/3})$ space \cite{engquist2011matrix}. Direct methods also suffer 
 from fill-in \cite{erlangga2008advances} that occurs during the Gaussian elimination process.
+\fi
+
+In this project, I will implement the sweeping preconditioner with the moving PML as 
+described in \cite{engquist2011pml}. The general method is as follows.
+Work in the 2D domain $(x_1, x_2) \in (0,1)^2$ discretized on an $n$ x $n$ grid where the number 
+of grid points $N=n^2$. 
+Assume Dirichlet zero boundary conditions at $x_2=1$. Approximations to the Sommerfeld 
+boundary conditions are imposed on the other three sides (absorbing layers) using a PML 
+(equations provided in the paper).
+A 5-point stencil is used to generate the $A$ matrix, which can be block-$LDL^T$-factorized. 
+This factorization eliminates unknowns layer by layer, starting from $x_2=0$ (hence ``sweeping 
+factorization''). 
+Inverting the factorization of $A$ can be used to solve for $u$ as described in Algorithms 
+2.1 and 2.2 in the paper. However, this takes $O(N^{3/2})$, which is no better than a 
+multifrontal (direct) method. On closer observation, $A^{-1}$ truncated to the first $m$ layers 
+approximates the discrete half-space Green's function of the Helmholtz equation with 
+zero boundary conditions. Similarly, the $m$th block matrix (denoted as $T_m$) in the 
+factorization's diagonal corresponds to the same Green's function restricted to $x_2=mh$
+with zero boundary at $x_2=(m+1)h$. $T_m$ maps an external force loaded on the $m$th layer 
+to the solution in the $m$th layer. Therefore, for approximating $T_m$, the PML can be 
+moved up from $x_2=0$ to $x_2=mh$. The approximation to $T_m$ can be solved for efficiently
+in a small subgrid where the moved PML lies (by the $m$th layer) and applied
+efficiently. Algorithms 2.3 and 2.4 in the paper describe this method and how to
+ultimately solve for $u$ with time complexity $O(N)$. In the end, the algorithm
+solves $\Delta u(x) + \frac{(\omega+i\alpha)^2}{c^2(x)}u(x)=f(x)$, where $\alpha$
+is $O(1)$ and small. 
 
 
 
