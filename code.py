@@ -2,10 +2,6 @@
 # Alex Bocchieri
 
 import numpy as np
-# import matplotlib.pyplot as plt
-# import scipy.linalg
-# from scipy.sparse import csc_matrix
-# from scipy.sparse.linalg import spsolve
 from numba import jit
 
 @jit(nopython=True)
@@ -37,12 +33,6 @@ def s2(x):
 
 @jit(nopython=True)
 def init_A():
-	# c1_vec = np.zeros((n**2-1,), dtype=complex)
-	# c2_vec = np.zeros((n**2-1,), dtype=complex)
-	# c3_vec = np.zeros((n**2-n,), dtype=complex)
-	# c4_vec = np.zeros((n**2-n,), dtype=complex)
-	# c5_vec = np.zeros((n**2,), dtype=complex)
-
 	c1_vec = np.zeros((n**2-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((n**2-1,), dtype=np.cdouble)
 	c3_vec = np.zeros((n**2-n,), dtype=np.cdouble)
@@ -110,8 +100,7 @@ def get_A_diag_block(a):
 	c5_idx = 0
 	row_i = 1 # 1..n
 
-	j = a #(a-1)*n + 1
-	# for i in range((a-1)*n+1, (a-1)*(n+1)+1):
+	j = a
 	for i in range(1, n+1):
 		x1 = (i-.5)*h
 		x2 = j*h
@@ -139,31 +128,24 @@ def get_A_diag_block(a):
 	return A_block
 
 
-# computes desired n x n block of A_a,b that corresponds to row b of u matrix)
+# computes desired n x n block of A_a,b that corresponds to row b of u matrix
 def get_A_block(a,b):
 	assert(a >= 1 and a <= n and b >= 1 and b <= n)
 	if a == b:
 		return get_A_diag_block(a)
-	elif a == b - 1:
-		do_T = False
-	elif a == b + 1:
-		do_T = True
-	else:
+	elif abs(a-b) > 1:
 		return np.zeros((n.n))
 
 	c4_vec = np.zeros((n,), dtype=np.cdouble)
 
 	j = b
 	x2 = (j+.5)*h
-	# for i in range((a-1)*n+1, (a-1)*(n+1)+1):
 	for i in range(1, n+1):
 		x1 = i*h
 		c4 = 1/h**2 * (s2(x2) / s1(x1))
 		c4_vec[i-1] = c4
 
 	A_block = np.diag(c4_vec)
-	if do_T:
-		A_block = A_block.T
 	return A_block
 
 
