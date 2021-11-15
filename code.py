@@ -6,7 +6,7 @@ from numba import jit
 import scipy.linalg
 import sys
 import numpy
-numpy.set_printoptions(threshold=sys.maxsize,precision=3,linewidth=np.inf)
+numpy.set_printoptions(threshold=sys.maxsize,precision=1,linewidth=np.inf)
 
 @jit(nopython=True)
 def sigma1(x):
@@ -224,7 +224,7 @@ def get_Hm(m):
 	c3_idx = 0
 	c4_idx = 0
 	c5_idx = 0
-	row_i = 1 # 1..bn
+	row_i = 1 # row in A matrix 1..bn
 	for j in range(1, b+1):
 		for i in range(1, n+1):
 			x1 = (i-.5)*h
@@ -263,6 +263,9 @@ def get_Hm(m):
 			c5_idx += 1
 
 			row_i += 1
+
+	c1_vec[n-1::n] = 0
+	c2_vec[n-1::n] = 0
 
 	A = np.diag(c5_vec) + np.diag(c1_vec,-1) + np.diag(c2_vec,1) + np.diag(c3_vec, -n) \
 		+ np.diag(c4_vec, n)
@@ -355,7 +358,7 @@ if __name__ == "__main__":
 	omega = 1 # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 4 # int(.1*omega) # interior grid size, proportional to omega
+	n = 5 # int(.1*omega) # interior grid size, proportional to omega
 	h = 1 / (n + 1) # spatial step size
 	lam = 2 * np.pi / omega
 	eta = lam # width of PML in spatial dim, typically around 1 wavelength
@@ -388,6 +391,8 @@ if __name__ == "__main__":
 	# print(Pm)
 
 	PHP = algo2_3()
-	# print(PHP)
-	x_str = np.array_repr(PHP)
-	print(x_str)
+	print()
+	print(PHP)
+	# x_str = np.array_repr(PHP)
+	# print(x_str)
+
