@@ -6,6 +6,7 @@ from numba import jit
 import scipy.linalg
 import sys
 import numpy
+from scipy.linalg import lu
 numpy.set_printoptions(threshold=sys.maxsize,precision=1,linewidth=np.inf)
 
 @jit(nopython=True)
@@ -336,22 +337,70 @@ def get_P_mat():
 
 
 def algo2_3():
-	# Hm_ra = np.zeros((b,n,n), dtype=np.cdouble)
-	# for m in range(b+1,n+1):
-	# 	for j in range(m-b+1, m+1):
-	# 		Hm = get_A_block(j,j)
+	HF = get_A_FF_block(s2)
+	PF = get_P_mat()
+	PHP = PF @ HF @ PF.T
+	P, LF, UF = lu(PF@HF@PF.T)
 
-	# 	Hm_ra = np.zeros((b,n,n), dtype=np.cdouble)
-	# 	for i in range(b):
-	# 		Hm = get_A_block(m,m,s2)
-	# 		Hm_ra[i] = 
-	Hm = get_Hm(b+1)
+	Hm_ra = np.zeros((n-b,b*n,b*n), dtype=np.cdouble)
+	Lm_ra = np.zeros((n-b,b*n,b*n), dtype=np.cdouble)
+	Um_ra = np.zeros((n-b,b*n,b*n), dtype=np.cdouble)
 	Pm = get_P_mat()
-	print(Hm.shape)
-	print(Pm.shape)
-	print(Hm)
+	for i in range(n-b):
+		Hm = get_Hm(i+b+1)
+		Hm_ra[i] = Hm
+		P, Lm, Um = lu(Pm@Hm@Pm.T)
+		Lm_ra[i] = Lm
+		Um_ra[i] = Um
+	# Hm = get_Hm(b+1)
 	PHP = Pm @ Hm @ Pm.T
-	return PHP
+	P, Lm, Um = lu(PHP)
+	return HF, LF, UF, Hm_ra, Lm_ra, Um_ra
+
+
+def algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra):
+	PF = get_P_mat()
+	Pm = PF
+	uF = np.zeros((b,n), dtype=np.cdouble)
+	for i in range(b):
+		uF[i] = f_mat[i]
+	um_ra = np.zeros((n-b,n), dtype=np.cdouble)
+	for i in range(n-b):
+		um_ra[i] = f_mat[i+b]
+	u = np.vstack((uF, um_ra))
+	A_b1F = get_A_Fb1_block(s2).T
+	TF = PF.T@np.linalg.inv(UF)@np.linalg.inv(LF)@PF
+	TFuF = TF@(uF.reshape(-1))
+	u[b] = u[b] - A_b1F@TFuF
+	for m in range(b+1, n):
+		A = get_A_block(m+1,m,s2)
+		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
+		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
+		u_temp[-n:] = u[m-1]
+		Tu = mat @ u_temp
+		Tu = Tu[-n:]
+		u[m] = u[m] - A@Tu
+	uF = TF@(uF.reshape(-1))
+	for m in range(b+1, n+1):
+		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
+		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
+		u_temp[-n:] = u[m-1]
+		Tu = mat @ u_temp
+		Tu = Tu[-n:]
+		u[m-1] = Tu
+	for m in range(n-1, b, -1):
+		A = get_A_block(m,m+1,s2)
+		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
+		Au_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
+		Au_temp[-n:] = A@u[m]
+		TAu = mat @ Au_temp
+		TAu = TAu[-n:]
+		u[m-1] = u[m-1] - TAu
+	A_Fb1 = get_A_Fb1_block(s2)
+	uF = uF - TF@A_Fb1@u[b]
+	for i in range(b):
+		u[i] = uF[i*n:(i+1)*n]
+	return u
 
 
 if __name__ == "__main__":
@@ -390,9 +439,6 @@ if __name__ == "__main__":
 	# Pm = get_P_mat()
 	# print(Pm)
 
-	PHP = algo2_3()
-	print()
-	print(PHP)
-	# x_str = np.array_repr(PHP)
-	# print(x_str)
+	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3()
+	u = algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra)
 
