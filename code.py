@@ -7,7 +7,10 @@ import scipy.linalg
 import sys
 import numpy
 from scipy.linalg import lu
-numpy.set_printoptions(threshold=sys.maxsize,precision=1,linewidth=np.inf)
+import matplotlib.pyplot as plt
+from scipy.sparse.linalg import LinearOperator
+from scipy.sparse.linalg import gmres
+numpy.set_printoptions(threshold=sys.maxsize,precision=3,linewidth=np.inf)
 
 @jit(nopython=True)
 def sigma1(x):
@@ -38,7 +41,21 @@ def s2(x):
 def s2m(x,m):
 	return (1 + 1j*sigma2(x-(m-b)*h)/omega)**-1
 
+# velocity field 1 described in paper
+def init_c1_mat(r1,r2):
+	x_i = np.linspace(0,1,n+2)
+	xx, yy = np.meshgrid(x_i,x_i)
+	c_mat = 4/3 * (1-.5*np.exp(-32*((xx-r1)**2 + (yy-r2)**2)))
+	return c_mat	
 
+# external force 1 described in paper
+def init_f1_mat(r1,r2):
+	x_i = np.linspace(0,1,n+2) # n+2 points in each dimension, including boundary
+	xx, yy = np.meshgrid(x_i[1:-1],x_i[1:-1]) # n interior points
+	f_mat = np.exp(-(4*omega/np.pi)**2*((xx-r1)**2 + (yy-r2)**2))
+	return f_mat	
+
+"""
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 @jit(nopython=True)
 def init_A(s2):
@@ -195,7 +212,7 @@ def get_A_FF_block(s2):
 def get_A_Fb1_block(s2):
 	A_block = get_A_block(b,b+1,s2)
 	return np.vstack((np.zeros(((b-1)*n, n), dtype=np.cdouble), A_block))
-
+"""
 
 
 
@@ -209,6 +226,53 @@ def get_A_Fb1_block(s2):
 
 
 
+# computes desired n x n block of A_a,a that corresponds to a row a in the grid
+# a = 1..n
+# s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
+def get_A_diag_block(a,s2):
+	c1_vec = np.zeros((n-1,), dtype=np.cdouble)
+	c2_vec = np.zeros((n-1,), dtype=np.cdouble)
+	c5_vec = np.zeros((n,), dtype=np.cdouble)
+
+	c1_idx = 0
+	c2_idx = 0
+	c5_idx = 0
+	row_i = 1 # 1..n
+
+	j = a
+	for i in range(1, n+1):
+		x1 = (i-.5)*h
+		x2 = j*h
+		c1 = 1/h**2 * (s1(x1) / s2(x2))
+		if row_i >= 2:
+			c1_vec[c1_idx] = c1
+			c1_idx += 1
+
+		x1 = (i+.5)*h
+		x2 = j*h
+		c2 = 1/h**2 * (s1(x1) / s2(x2))
+		if row_i <= n - 1:
+			c2_vec[c2_idx] = c2
+			c2_idx += 1
+
+		x1 = i*h
+		x2 = (j-.5)*h
+		c3 = 1/h**2 * (s2(x2) / s1(x1))
+
+		x1 = i*h
+		x2 = (j+.5)*h
+		c4 = 1/h**2 * (s2(x2) / s1(x1))
+
+		x1 = i*h
+		x2 = j*h
+		c5 = omega**2 / (s1(x1)*s2(x2)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+		c5_vec[c5_idx] = c5
+		c5_idx += 1
+
+		row_i += 1
+
+	A_block = np.diag(c5_vec) + np.diag(c1_vec,-1) + np.diag(c2_vec,1)
+	return A_block
 
 
 
@@ -380,6 +444,7 @@ def algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra):
 		Tu = mat @ u_temp
 		Tu = Tu[-n:]
 		u[m] = u[m] - A@Tu
+		print("first loop: " + str(m) + " / " + str(n-1))
 	uF = TF@(uF.reshape(-1))
 	for m in range(b+1, n+1):
 		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
@@ -388,6 +453,7 @@ def algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra):
 		Tu = mat @ u_temp
 		Tu = Tu[-n:]
 		u[m-1] = Tu
+		print("second loop: " + str(m) + " / " + str(n))
 	for m in range(n-1, b, -1):
 		A = get_A_block(m,m+1,s2)
 		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
@@ -396,6 +462,7 @@ def algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra):
 		TAu = mat @ Au_temp
 		TAu = TAu[-n:]
 		u[m-1] = u[m-1] - TAu
+		print("third loop: " + str(m) + " / " + str(b+1))
 	A_Fb1 = get_A_Fb1_block(s2)
 	uF = uF - TF@A_Fb1@u[b]
 	for i in range(b):
@@ -403,19 +470,71 @@ def algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra):
 	return u
 
 
+def prec(f_vec):
+	f_mat = f_vec.reshape((n,n))
+	PF = get_P_mat()
+	Pm = PF
+	uF = np.zeros((b,n), dtype=np.cdouble)
+	for i in range(b):
+		uF[i] = f_mat[i]
+	um_ra = np.zeros((n-b,n), dtype=np.cdouble)
+	for i in range(n-b):
+		um_ra[i] = f_mat[i+b]
+	u = np.vstack((uF, um_ra))
+	A_b1F = get_A_Fb1_block(s2).T
+	TF = PF.T@np.linalg.inv(UF)@np.linalg.inv(LF)@PF
+	TFuF = TF@(uF.reshape(-1))
+	u[b] = u[b] - A_b1F@TFuF
+	for m in range(b+1, n):
+		A = get_A_block(m+1,m,s2)
+		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
+		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
+		u_temp[-n:] = u[m-1]
+		Tu = mat @ u_temp
+		Tu = Tu[-n:]
+		u[m] = u[m] - A@Tu
+		print("first loop: " + str(m) + " / " + str(n-1))
+	uF = TF@(uF.reshape(-1))
+	for m in range(b+1, n+1):
+		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
+		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
+		u_temp[-n:] = u[m-1]
+		Tu = mat @ u_temp
+		Tu = Tu[-n:]
+		u[m-1] = Tu
+		print("second loop: " + str(m) + " / " + str(n))
+	for m in range(n-1, b, -1):
+		A = get_A_block(m,m+1,s2)
+		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
+		Au_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
+		Au_temp[-n:] = A@u[m]
+		TAu = mat @ Au_temp
+		TAu = TAu[-n:]
+		u[m-1] = u[m-1] - TAu
+		print("third loop: " + str(m) + " / " + str(b+1))
+	A_Fb1 = get_A_Fb1_block(s2)
+	uF = uF - TF@A_Fb1@u[b]
+	for i in range(b):
+		u[i] = uF[i*n:(i+1)*n]
+	return u
+
+
+
 if __name__ == "__main__":
-	omega = 1 # angular frequency
+	omega = 2*np.pi*16 # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 5 # int(.1*omega) # interior grid size, proportional to omega
+	n = 127 # int(.1*omega) # interior grid size, proportional to omega
 	h = 1 / (n + 1) # spatial step size
 	lam = 2 * np.pi / omega
 	eta = lam # width of PML in spatial dim, typically around 1 wavelength
-	b = 2 # int(h / eta) # width of PML in number of grid points
+	b = 12 # int(h / eta) # width of PML in number of grid points
 
 	u_mat = np.zeros((n,n))
-	f_mat = np.zeros((n,n))
-	c_mat = np.ones((n,n)) # velocity field
+	r1 = .5
+	r2 = .5
+	f_mat = init_f1_mat(r1,r2)
+	c_mat = init_c1_mat(r1,r2)
 
 	# A = init_A()
 	# A_21 = get_A_block(2,1)
@@ -439,6 +558,20 @@ if __name__ == "__main__":
 	# Pm = get_P_mat()
 	# print(Pm)
 
+	r = [.5, .5]
+
+
 	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3()
-	u = algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra)
+	# u = algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra)
+
+	f_vec = f_mat.flatten()
+	M = LinearOperator((n**2,n**2), matvec=prec)
+	u1 = M.matvec(f_vec)
+	u1 = u1.reshape((n,n))
+
+
+
+	# plt.imshow(np.abs(u))
+	# plt.imshow(np.real(u))
+	# plt.show()
 
