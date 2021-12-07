@@ -254,54 +254,6 @@ def algo2_3():
 	return HF, LF, UF, Hm_ra, Lm_ra, Um_ra
 
 
-def algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra):
-	PF = get_P_mat()
-	Pm = PF
-	uF = np.zeros((b,n), dtype=np.cdouble)
-	for i in range(b):
-		uF[i] = f_mat[i]
-	um_ra = np.zeros((n-b,n), dtype=np.cdouble)
-	for i in range(n-b):
-		um_ra[i] = f_mat[i+b]
-	u = np.vstack((uF, um_ra))
-	A_b1F = get_A_Fb1_block(s2).T
-	TF = PF.T@np.linalg.inv(UF)@np.linalg.inv(LF)@PF
-	TFuF = TF@(uF.reshape(-1))
-	u[b] = u[b] - A_b1F@TFuF
-	for m in range(b+1, n):
-		A = get_A_block(m+1,m,s2)
-		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
-		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
-		u_temp[-n:] = u[m-1]
-		Tu = mat @ u_temp
-		Tu = Tu[-n:]
-		u[m] = u[m] - A@Tu
-		print("first loop: " + str(m) + " / " + str(n-1))
-	uF = TF@(uF.reshape(-1))
-	for m in range(b+1, n+1):
-		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
-		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
-		u_temp[-n:] = u[m-1]
-		Tu = mat @ u_temp
-		Tu = Tu[-n:]
-		u[m-1] = Tu
-		print("second loop: " + str(m) + " / " + str(n))
-	for m in range(n-1, b, -1):
-		A = get_A_block(m,m+1,s2)
-		mat = Pm.T@np.linalg.inv(Um_ra[m-1-b])@np.linalg.inv(Lm_ra[m-1-b])@Pm
-		Au_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
-		Au_temp[-n:] = A@u[m]
-		TAu = mat @ Au_temp
-		TAu = TAu[-n:]
-		u[m-1] = u[m-1] - TAu
-		print("third loop: " + str(m) + " / " + str(b+1))
-	A_Fb1 = get_A_Fb1_block(s2)
-	uF = uF - TF@A_Fb1@u[b]
-	for i in range(b):
-		u[i] = uF[i*n:(i+1)*n]
-	return u
-
-
 def prec(f_vec):
 	f_mat = f_vec.reshape((n,n))
 	PF = get_P_mat()
@@ -401,7 +353,6 @@ if __name__ == "__main__":
 	A = build_A_matrix()
 
 	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3()
-	# u = algo2_4(HF, LF, UF, Hm_ra, Lm_ra, Um_ra)
 
 	f_vec = f_mat.flatten()
 	M = LinearOperator((n**2,n**2), matvec=prec)
