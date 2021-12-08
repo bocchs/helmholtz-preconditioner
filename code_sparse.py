@@ -180,7 +180,7 @@ def get_A_block(a,b,s2):
 	if a == b:
 		return get_A_diag_block(a,s2)
 	if abs(a-b) > 1:
-		return sparse.csr_matrix((n, n), dtype=np.complex) # zeros
+		return sparse.csc_matrix((n, n), dtype=np.complex) # zeros
 
 	c4_vec = np.zeros((n,), dtype=np.cdouble)
 
@@ -199,9 +199,9 @@ def get_A_block(a,b,s2):
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 def get_A_FF_block(s2):
 	# A_block_diags = np.zeros((b,n,n), dtype=np.cdouble)
-	A_block_diags = b*[scipy.sparse.csr_matrix((n, n), dtype=np.complex)]
+	A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=np.complex)]
 	# A_block_off_diags = np.zeros((b-1,n,n), dtype=np.cdouble)
-	A_block_off_diags = (b-1)*[scipy.sparse.csr_matrix((n, n), dtype=np.complex)]
+	A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=np.complex)]
 	for i in range(1,b+1):
 		A_block_diags[i-1] = get_A_block(i,i,s2)
 	for i in range(1,b):
@@ -222,7 +222,7 @@ def get_A_FF_block(s2):
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 def get_A_Fb1_block(s2):
 	A_block = get_A_block(b,b+1,s2)
-	return scipy.sparse.vstack((scipy.sparse.csr_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
+	return scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
 
 
 # computes permutation matrix from row major to column major ordering for one PML
@@ -234,7 +234,7 @@ def get_P_mat():
 		# compute submatrix that corresponds to one column of grid
 		for j in range(b):
 			Pm[i*b+j, i+j*n] = 1
-	Pm = scipy.sparse.csr_matrix(Pm)
+	Pm = scipy.sparse.csc_matrix(Pm)
 	return Pm
 
 
@@ -261,8 +261,6 @@ def algo2_3():
 
 def prec(f_vec):
 	f_mat = f_vec.reshape((n,n))
-	PF = get_P_mat()
-	Pm = PF
 	uF = np.zeros((b,n), dtype=np.cdouble)
 	for i in range(b):
 		uF[i] = f_mat[i]
@@ -270,38 +268,32 @@ def prec(f_vec):
 	for i in range(n-b):
 		um_ra[i] = f_mat[i+b]
 	u = np.vstack((uF, um_ra))
-	A_b1F = get_A_Fb1_block(s2).T
-	TF = PF.T@scipy.sparse.linalg.inv(UF)@scipy.sparse.linalg.inv(LF)@PF
 	TFuF = TF@(uF.reshape(-1))
 	u[b] = u[b] - A_b1F@TFuF
 	for m in range(b+1, n):
-		A = get_A_block(m+1,m,s2)
-		mat = Pm.T@scipy.sparse.linalg.inv(Um_ra[m-1-b])@scipy.sparse.linalg.inv(Lm_ra[m-1-b])@Pm
+		A = A_ra[m-1].T
+		mat = mat_ra[m-1-b]
 		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
 		u_temp[-n:] = u[m-1]
 		Tu = mat @ u_temp
 		Tu = Tu[-n:]
 		u[m] = u[m] - A@Tu
-		print("first loop: " + str(m) + " / " + str(n-1))
 	uF = TF@(uF.reshape(-1))
 	for m in range(b+1, n+1):
-		mat = Pm.T@scipy.sparse.linalg.inv(Um_ra[m-1-b])@scipy.sparse.linalg.inv(Lm_ra[m-1-b])@Pm
+		mat = mat_ra[m-1-b]
 		u_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
 		u_temp[-n:] = u[m-1]
 		Tu = mat @ u_temp
 		Tu = Tu[-n:]
 		u[m-1] = Tu
-		print("second loop: " + str(m) + " / " + str(n))
 	for m in range(n-1, b, -1):
-		A = get_A_block(m,m+1,s2)
-		mat = Pm.T@scipy.sparse.linalg.inv(Um_ra[m-1-b])@scipy.sparse.linalg.inv(Lm_ra[m-1-b])@Pm
+		A = A_ra[m-1]
+		mat = mat_ra[m-1-b]
 		Au_temp = np.zeros((mat.shape[0],), dtype=np.cdouble)
 		Au_temp[-n:] = A@u[m]
 		TAu = mat @ Au_temp
 		TAu = TAu[-n:]
 		u[m-1] = u[m-1] - TAu
-		print("third loop: " + str(m) + " / " + str(b+1))
-	A_Fb1 = get_A_Fb1_block(s2)
 	uF = uF - TF@A_Fb1@u[b]
 	for i in range(b):
 		u[i] = uF[i*n:(i+1)*n]
@@ -309,29 +301,6 @@ def prec(f_vec):
 
 
 def build_A_matrix():
-	# A_FF = get_A_FF_block(s2)
-	# A_Fb1_diag = get_A_Fb1_block(s2).diagonal(-n)
-	# # A_b1F_diag = np.copy(A_Fb1_diag)
-	# block_diags_ra = []
-	# upper_block_diags_ra = []
-	# lower_block_diags_ra = []
-	# for i in range(b+1,n+1):
-	# 	block_diags_ra.append(get_A_block(i,i,s2))
-	# block_diag = scipy.sparse.block_diag(block_diags_ra)
-	# for i in range(b+1,n):
-	# 	upper_block_diag = get_A_block(i,i+1,s2).diagonal()
-	# 	upper_block_diags_ra.append(upper_block_diag)
-
-	# upper_block_diag = scipy.sparse.diags(np.concatenate([A_Fb1_diag,*upper_block_diags_ra]),b*n)
-	# lower_block_diag = scipy.sparse.diags(np.concatenate([A_Fb1_diag,*upper_block_diags_ra]),-b*n)
-	# diag = scipy.sparse.block_diag((A_FF, block_diag))
-	# # mat1 = block_diag + upper_block_diag + lower_block_diag
-	# # A = scipy.sparse.block_diag((A_FF, mat1))
-	# A = diag + upper_block_diag + lower_block_diag
-
-	# # A[:b*n,b*n:b*n+n] = A_Fb1
-	# # A[b*n:b*n+n,:b*n] = A_b1F
-	# print(np.real(A.toarray()))
 	block_diags_ra = []
 	off_diags_ra = [] # array of diagonals
 	for i in range(1,n+1):
@@ -348,10 +317,11 @@ def build_A_matrix():
 
 
 if __name__ == "__main__":
-	omega = 2*np.pi*16 # angular frequency
+	alpha = 2
+	omega = 2*np.pi*16# + 1j*alpha # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 127 # int(.1*omega) # interior grid size, proportional to omega
+	n = 3127 # int(.1*omega) # interior grid size, proportional to omega
 	h = 1 / (n + 1) # spatial step size
 	lam = 2 * np.pi / omega
 	eta = lam # width of PML in spatial dim, typically around 1 wavelength
@@ -367,6 +337,24 @@ if __name__ == "__main__":
 
 	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3()
 
+	# initalize variables used in prec
+	PF = get_P_mat()
+	Pm = PF
+	mat_ra = []
+	for i in range(len(Um_ra)):
+		Um_inv = scipy.sparse.linalg.inv(Um_ra[i])
+		Lm_inv = scipy.sparse.linalg.inv(Lm_ra[i])
+		mat_ra.append(Pm.T@Um_inv@Lm_inv@Pm)
+	UF_inv = scipy.sparse.linalg.inv(UF)
+	LF_inv = scipy.sparse.linalg.inv(LF)
+	TF = PF.T@UF_inv@LF_inv@PF
+	A_b1F = get_A_Fb1_block(s2).T
+	A_Fb1 = get_A_Fb1_block(s2)
+	A_ra = []
+	for i in range(1,n):
+		A_ra.append(get_A_block(i,i+1,s2))
+
+
 	f_vec = f_mat.flatten()
 	M = LinearOperator((n**2,n**2), matvec=prec)
 	u, exit_code = gmres(A, f_vec, M=M, tol=1e-3)
@@ -380,5 +368,5 @@ if __name__ == "__main__":
 
 	# plt.imshow(np.abs(u))
 	plt.imshow(np.real(u))
-	# plt.show()
+	plt.show()
 
