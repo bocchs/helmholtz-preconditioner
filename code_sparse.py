@@ -2,18 +2,13 @@
 # Alex Bocchieri
 
 import numpy as np
-from numba import jit
 import scipy.linalg
 import sys
-import numpy
-from scipy.linalg import lu
+import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 import scipy.sparse
-from scipy.sparse.linalg import LinearOperator
-from scipy.sparse.linalg import gmres
-numpy.set_printoptions(threshold=sys.maxsize,precision=3,linewidth=np.inf)
+np.set_printoptions(threshold=sys.maxsize,precision=3,linewidth=np.inf)
 
-@jit(nopython=True)
 def sigma1(x):
 	if x <= eta:
 		return const / eta * ((x - eta)/eta)**2
@@ -23,19 +18,16 @@ def sigma1(x):
 		return 0 
 
 
-@jit(nopython=True)
 def sigma2(x):
 	if x <= eta:
 		return const / eta * ((x - eta)/eta)**2
 	else:
 		return 0
 
-@jit(nopython=True)
 def s1(x):
 	return (1 + 1j*sigma1(x)/omega)**-1
 
 
-@jit(nopython=True)
 def s2(x):
 	return (1 + 1j*sigma2(x)/omega)**-1
 
@@ -180,7 +172,7 @@ def get_A_block(a,b,s2):
 	if a == b:
 		return get_A_diag_block(a,s2)
 	if abs(a-b) > 1:
-		return sparse.csc_matrix((n, n), dtype=np.complex) # zeros
+		return sparse.csc_matrix((n, n), dtype=complex) # zeros
 
 	c4_vec = np.zeros((n,), dtype=np.cdouble)
 
@@ -198,10 +190,8 @@ def get_A_block(a,b,s2):
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 def get_A_FF_block(s2):
-	# A_block_diags = np.zeros((b,n,n), dtype=np.cdouble)
-	A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=np.complex)]
-	# A_block_off_diags = np.zeros((b-1,n,n), dtype=np.cdouble)
-	A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=np.complex)]
+	A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
+	A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
 	for i in range(1,b+1):
 		A_block_diags[i-1] = get_A_block(i,i,s2)
 	for i in range(1,b):
@@ -318,14 +308,14 @@ def build_A_matrix():
 
 if __name__ == "__main__":
 	alpha = 2
-	omega = 2*np.pi*16# + 1j*alpha # angular frequency
+	omega = 2*np.pi*16 + 1j*alpha # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 3127 # int(.1*omega) # interior grid size, proportional to omega
+	n = 127 # int(.1*omega) # interior grid size, proportional to omega
 	h = 1 / (n + 1) # spatial step size
 	lam = 2 * np.pi / omega
-	eta = lam # width of PML in spatial dim, typically around 1 wavelength
-	b = 12 # int(h / eta) # width of PML in number of grid points
+	b = 12 # width of PML in number of grid points
+	eta = b*h # width of PML in spatial dim
 
 	u_mat = np.zeros((n,n))
 	r1 = .5
@@ -342,9 +332,15 @@ if __name__ == "__main__":
 	Pm = PF
 	mat_ra = []
 	for i in range(len(Um_ra)):
+		fname = 'saved_files/mat_ra'+str(i)+'_n127_b12.npz'
+		print(str(i))
 		Um_inv = scipy.sparse.linalg.inv(Um_ra[i])
 		Lm_inv = scipy.sparse.linalg.inv(Lm_ra[i])
-		mat_ra.append(Pm.T@Um_inv@Lm_inv@Pm)
+		mat = Pm.T@Um_inv@Lm_inv@Pm
+		# scipy.sparse.save_npz(fname, mat)
+		# mat = scipy.sparse.load_npz(fname)
+		mat_ra.append(mat)
+
 	UF_inv = scipy.sparse.linalg.inv(UF)
 	LF_inv = scipy.sparse.linalg.inv(LF)
 	TF = PF.T@UF_inv@LF_inv@PF
@@ -355,9 +351,16 @@ if __name__ == "__main__":
 		A_ra.append(get_A_block(i,i+1,s2))
 
 
+	# print(np.real(f_mat))
+	# sys.exit()
 	f_vec = f_mat.flatten()
-	M = LinearOperator((n**2,n**2), matvec=prec)
-	u, exit_code = gmres(A, f_vec, M=M, tol=1e-3)
+	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), matvec=prec)
+	# temp = M.matmat(A.A)
+	# print(np.real(temp)) # should be approx identity matrix
+	print("AAA")
+	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, restart=30, maxiter=5, callback=print,callback_type='pr_norm')
+	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, callback=print, callback_type='pr_norm')
+	print("BBB")
 	if exit_code > 0:
 		print("GMRES: convergence to tolerance not achieved")
 	elif exit_code < 0:
