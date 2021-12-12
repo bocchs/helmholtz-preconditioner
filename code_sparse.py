@@ -190,21 +190,35 @@ def get_A_block(a,b,s2):
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 def get_A_FF_block(s2):
-	A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
-	A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
-	for i in range(1,b+1):
-		A_block_diags[i-1] = get_A_block(i,i,s2)
+	# A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
+	# A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
+	# for i in range(1,b+1):
+	# 	A_block_diags[i-1] = get_A_block(i,i,s2)
+	# for i in range(1,b):
+		# A_block_off_diags[i-1] = get_A_block(i,i+1,s2)
+	# # diag_blocks = scipy.linalg.block_diag(*A_block_diags)
+	# diag_blocks = scipy.sparse.block_diag(A_block_diags)
+	# diag_elems = diag_blocks.diagonal()
+	# off_diag_blocks = scipy.sparse.block_diag(A_block_off_diags)
+	# off_diag_elems = off_diag_blocks.diagonal()
+	# upper = scipy.sparse.diags(off_diag_elems,n)
+	# lower = scipy.sparse.diags(off_diag_elems,-n)
+	# middle = scipy.sparse.diags(diag_elems)
+	# return upper + middle + lower
+	diag_block_ra = []
+	A_block_off_diags_ra = []
 	for i in range(1,b):
-		A_block_off_diags[i-1] = get_A_block(i,i+1,s2)
-	# diag_blocks = scipy.linalg.block_diag(*A_block_diags)
-	diag_blocks = scipy.sparse.block_diag(A_block_diags)
-	diag_elems = diag_blocks.diagonal()
-	off_diag_blocks = scipy.sparse.block_diag(A_block_off_diags)
+		A_block_off_diags_ra.append(get_A_block(i,i+1,s2))
+	off_diag_blocks = scipy.sparse.block_diag(A_block_off_diags_ra)
 	off_diag_elems = off_diag_blocks.diagonal()
 	upper = scipy.sparse.diags(off_diag_elems,n)
 	lower = scipy.sparse.diags(off_diag_elems,-n)
-	middle = scipy.sparse.diags(diag_elems)
-	return upper + middle + lower
+	for i in range(1,b+1):
+		diag_block_ra.append(get_A_block(i,i,s2))
+	middle = scipy.sparse.block_diag(diag_block_ra)
+	A_FF = middle# + upper + lower
+	return A_FF
+
 
 
 # computes bn x n block of A_F,b+1 that corresponds to first b rows of grid
@@ -231,8 +245,14 @@ def get_P_mat():
 def algo2_3():
 	HF = get_A_FF_block(s2)
 	PF = get_P_mat()
+	# print(PF.A)
+	# sys.exit()
 	PHP = PF @ HF @ PF.T
-	lu = scipy.sparse.linalg.splu(PF@HF@PF.T)
+	# print(np.real(PHP.A))
+	# print(PF.shape)
+	# print(HF.shape)
+	# sys.exit()
+	lu = scipy.sparse.linalg.splu(PHP)
 	LF = lu.L
 	UF = lu.U
 
@@ -242,10 +262,22 @@ def algo2_3():
 	Pm = get_P_mat()
 	for i in range(n-b):
 		Hm = get_Hm(i+b+1)
+		# print(np.real(Hm.A))
+		# print()
 		Hm_ra.append(Hm)
-		lu = scipy.sparse.linalg.splu(Pm@Hm@Pm.T)
+		PHP = Pm@Hm@Pm.T
+		# print(np.real(PHP.A))
+		# sys.exit()
+		lu = scipy.sparse.linalg.splu(PHP)
+		# print(np.real(lu.L.A))
+		# print()
+		# print(np.real(lu.U.A))
+		# print()
+		# print()
+		# print()
 		Lm_ra.append(lu.L)
 		Um_ra.append(lu.U)
+	# sys.exit()
 	return HF, LF, UF, Hm_ra, Lm_ra, Um_ra
 
 
@@ -307,24 +339,35 @@ def build_A_matrix():
 
 
 if __name__ == "__main__":
+	##### global variables set here are used in functions above #####
 	alpha = 2
 	omega = 2*np.pi*16 + 1j*alpha # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 127 # int(.1*omega) # interior grid size, proportional to omega
+	n = 5 #127 # interior grid size
 	h = 1 / (n + 1) # spatial step size
-	lam = 2 * np.pi / omega
-	b = 12 # width of PML in number of grid points
+	b = 2 # 12 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
 
 	u_mat = np.zeros((n,n))
 	r1 = .5
 	r2 = .5
 	f_mat = init_f1_mat(r1,r2)
+	f_vec = f_mat.flatten()
 	c_mat = init_c1_mat(r1,r2)
 
-	A = build_A_matrix()
+	# plt.imshow(np.real(c_mat))
+	# plt.show()
+	# sys.exit()
 
+	A = build_A_matrix()
+	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
+	# u = u.reshape((n,n))
+	# plt.imshow(np.real(u))
+	# plt.show()
+	# sys.exit()
+
+	
 	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3()
 
 	# initalize variables used in prec
@@ -332,7 +375,7 @@ if __name__ == "__main__":
 	Pm = PF
 	mat_ra = []
 	for i in range(len(Um_ra)):
-		fname = 'saved_files/mat_ra'+str(i)+'_n127_b12.npz'
+		fname = 'saved_files/mat_ra'+str(i)+'_n' + str(n) + '_b' + str(b) + '.npz'
 		print(str(i))
 		Um_inv = scipy.sparse.linalg.inv(Um_ra[i])
 		Lm_inv = scipy.sparse.linalg.inv(Lm_ra[i])
@@ -349,22 +392,35 @@ if __name__ == "__main__":
 	A_ra = []
 	for i in range(1,n):
 		A_ra.append(get_A_block(i,i+1,s2))
+	
 
-
-	# print(np.real(f_mat))
-	# sys.exit()
-	f_vec = f_mat.flatten()
 	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), matvec=prec)
 	# temp = M.matmat(A.A)
+	# plt.figure(1)
+	# plt.imshow(np.real(temp))
+	# plt.title('real(M*A)')
+	# plt.colorbar()
+	# plt.figure(2)
+	# plt.imshow(np.imag(temp))
+	# plt.title('imag(M*A)')
+	# plt.colorbar()
+	# plt.show()
+	# print('cond(M*A) = ' + str(np.linalg.cond(temp)))
+	# print('cond(A) = ' + str(np.linalg.cond(A.A)))
+	# sys.exit()
 	# print(np.real(temp)) # should be approx identity matrix
 	print("AAA")
 	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, restart=30, maxiter=5, callback=print,callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, callback=print, callback_type='pr_norm')
+	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, restart=30, maxiter=1, callback=print,callback_type='pr_norm')
+	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	print("BBB")
 	if exit_code > 0:
 		print("GMRES: convergence to tolerance not achieved")
 	elif exit_code < 0:
 		print("GMRES: illegal input or breakdown")
+	else:
+		print("GMRES: convergence achieved")
 	
 	u = u.reshape((n,n))
 
