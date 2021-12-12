@@ -336,18 +336,73 @@ def build_A_matrix():
 	A = block_diag + upper + lower
 	return A
 
+def algo2_1():
+	S1 = get_A_block(1,1,s2).A
+	T = scipy.linalg.inv(S1)
+
+	S_ra = [S1]
+	T_ra = [T]
+	for m in range(2,n+1):
+		Amm = get_A_block(m,m,s2).A
+		Amm1 = get_A_block(m,m-1,s2).A
+		Am1m = np.copy(Amm1).T
+		Sm = Amm - Amm1@T@Am1m
+		T = scipy.linalg.inv(Sm)
+		S_ra.append(Sm)
+		T_ra.append(T)
+	# end algo
+
+	# rebuild A matrix from LDL factorization
+	L_ra = []
+	for k in range(1,n):
+		L = np.eye(n**2,dtype=complex)
+		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,s2)@T_ra[k-1]
+		L_ra.append(L)
+	A_rebuilt = np.eye(n**2,dtype=complex)
+	for i in range(1,n):
+		A_rebuilt = A_rebuilt@L_ra[i-1]
+	A_rebuilt = A_rebuilt@scipy.sparse.block_diag(S_ra)
+	for i in range(n-1,0,-1):
+		A_rebuilt = A_rebuilt@(L_ra[i-1].T)
+	# print(np.real(A.A))
+	# print()
+	# print(np.real(A_rebuilt))
+	# print()
+	diff = A_rebuilt - A
+	print(np.imag(diff))
+	print("real part max diff = " + str(np.max(np.abs(np.real(diff)))))
+	print("imag part max diff = " + str(np.max(np.abs(np.imag(diff)))))
+	print("max diff magnitude = " + str(np.max(np.abs(diff))))
+	sys.exit()
+	return T_ra, S_ra, L_ra, A_rebuilt
+
+
+def algo2_2(T_ra, S_ra, L_ra):
+	u = np.copy(f_mat).astype(complex)
+	for m in range(1,n):
+		u[m] = u[m] - get_A_block(m+1,m,s2).A@T_ra[m-1]@u[m-1]
+	for m in range(1,n+1):
+		u[m-1] = T_ra[m-1]@u[m-1]
+	for m in range(n-1,0,-1):
+		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,s2)@u[m]
+	return u
+
+
+
+
 
 
 if __name__ == "__main__":
 	##### global variables set here are used in functions above #####
 	alpha = 2
-	omega = 2*np.pi*16 + 1j*alpha # angular frequency
-	const = 1 # appropriate positive constant for sigma1, sigma2
+	lam = 1
+	omega = 2*np.pi*lam + 1j*alpha # angular frequency
+	const = .001 # appropriate positive constant for sigma1, sigma2
 
-	n = 5 #127 # interior grid size
+	n = 31 #127 # interior grid size
 	h = 1 / (n + 1) # spatial step size
 	b = 2 # 12 # width of PML in number of grid points
-	eta = b*h # width of PML in spatial dim
+	eta = lam# b*h # width of PML in spatial dim
 
 	u_mat = np.zeros((n,n))
 	r1 = .5
@@ -361,11 +416,32 @@ if __name__ == "__main__":
 	# sys.exit()
 
 	A = build_A_matrix()
-	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
-	# u = u.reshape((n,n))
-	# plt.imshow(np.real(u))
+	u_true, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
+	u_true = u_true.reshape((n,n))
+	plt.figure()
+	plt.imshow(np.imag(u_true))
 	# plt.show()
 	# sys.exit()
+
+
+	# print(np.real(A.A))
+	# print()
+
+	T_ra, S_ra, L_ra, A_rebuilt = algo2_1()
+	u_solved = algo2_2(T_ra, S_ra, L_ra)
+	print(np.max(np.abs(u_true - u_solved)))
+	plt.figure()
+	plt.imshow(np.imag(u_solved))
+	u_rebuilt, exit_code = scipy.sparse.linalg.gmres(A_rebuilt, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
+	plt.figure()
+	u_rebuilt = u_rebuilt.reshape((n,n))
+	plt.imshow(np.imag(u_rebuilt))
+	plt.show()
+	sys.exit()
+
+
+
+
 
 	
 	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3()
