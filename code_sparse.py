@@ -212,7 +212,7 @@ def build_A_matrix(choose_s2, m, b, const, eta, h):
 
 
 # Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
-def get_Hm(m, b, const, eta):
+def get_Hm(m, b, const, eta, h):
 	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
@@ -225,7 +225,7 @@ def get_Hm(m, b, const, eta):
 	c4_idx = 0
 	c5_idx = 0
 	row_i = 1 # row in A matrix 1..bn
-	for j in range(1, b+1):
+	for j in range(m-b+1, m+1):
 		for i in range(1, n+1):
 			x1 = (i-.5)*h
 			x2 = j*h
@@ -344,14 +344,14 @@ def algo2_3(b, const, eta, h):
 	Lm_ra = []
 	Um_ra = []
 	Pm = get_P_mat()
-	for i in range(n-b):
-		Hm = get_Hm(i+b+1,b,const,eta)
+	for m in range(b+1,n+1):
+		Hm = get_Hm(m,b,const,eta,h)
 		# print(np.real(Hm.A))
 		# print()
 		Hm_ra.append(Hm)
 		PHP = Pm@Hm@Pm.T
-		# print(np.real(PHP.A))
-		# sys.exit()
+		print(np.real(PHP.A))
+		sys.exit()
 		lu = scipy.sparse.linalg.splu(PHP)
 		# print(np.real(lu.L.A))
 		# print()
@@ -441,7 +441,7 @@ if __name__ == "__main__":
 
 	# print(np.real(A.A))
 	# print()
-	"""
+	
 
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta,h)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const,eta)
@@ -454,7 +454,7 @@ if __name__ == "__main__":
 	plt.imshow(np.imag(u_rebuilt))
 	plt.show()
 	# sys.exit()
-	
+	"""
 
 
 
