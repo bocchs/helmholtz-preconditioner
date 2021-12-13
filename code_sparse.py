@@ -51,7 +51,7 @@ def init_f1_mat(r1,r2):
 # computes desired n x n block of A_a,a that corresponds to a row a in the grid
 # a = 1..n
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_diag_block(a,choose_s2,m,b,const,eta):
+def get_A_diag_block(a, choose_s2, m, b, const, eta, h):
 	c1_vec = np.zeros((n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((n-1,), dtype=np.cdouble)
 	c5_vec = np.zeros((n,), dtype=np.cdouble)
@@ -116,12 +116,12 @@ def get_A_diag_block(a,choose_s2,m,b,const,eta):
 # computes desired n x n block of A_row,col that corresponds to "col'th" row of the grid
 # row,col = 1..n (indexes the block matrix)
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_block(row,col,choose_s2,m,b,const,eta):
+def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
 	if row == col:
-		return get_A_diag_block(row,choose_s2,m,b,const,eta)
+		return get_A_diag_block(row,choose_s2,m,b,const,eta,h)
 	if abs(row-col) > 1:
-		return sparse.csc_matrix((n, n), dtype=complex) # zeros
+		return sparse.csc_matrix((n, n), dtype=np.cdouble) # zeros
 
 	c4_vec = np.zeros((n,), dtype=np.cdouble)
 
@@ -141,9 +141,9 @@ def get_A_block(row,col,choose_s2,m,b,const,eta):
 
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
 # uses s2m for aux prob on subgrid
-def get_A_FF_block(b,const,eta):
-	# A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
-	# A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=complex)]
+def get_A_FF_block(b, const, eta, h):
+	# A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=np.cdouble)]
+	# A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=np.cdouble)]
 	# for i in range(1,b+1):
 	# 	A_block_diags[i-1] = get_A_block(i,i,s2)
 	# for i in range(1,b):
@@ -160,13 +160,13 @@ def get_A_FF_block(b,const,eta):
 	diag_block_ra = []
 	A_block_off_diags_ra = []
 	for i in range(1,b):
-		A_block_off_diags_ra.append(get_A_block(i,i+1,False,i,b,const,eta))
+		A_block_off_diags_ra.append(get_A_block(i,i+1,False,i,b,const,eta,h))
 	off_diag_blocks = scipy.sparse.block_diag(A_block_off_diags_ra)
 	off_diag_elems = off_diag_blocks.diagonal()
 	upper = scipy.sparse.diags(off_diag_elems,n)
 	lower = scipy.sparse.diags(off_diag_elems,-n)
 	for i in range(1,b+1):
-		diag_block_ra.append(get_A_block(i,i,False,i,b,const,eta))
+		diag_block_ra.append(get_A_block(i,i,False,i,b,const,eta, h))
 	middle = scipy.sparse.block_diag(diag_block_ra)
 	A_FF = middle# + upper + lower
 	return A_FF
@@ -176,8 +176,8 @@ def get_A_FF_block(b,const,eta):
 # computes bn x n block of A_F,b+1 that corresponds to first b rows of grid
 # take transpose of this result to get n x bn block of A_b+1,F
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_Fb1_block(choose_s2,m,b,const,eta):
-	A_block = get_A_block(b,b+1,choose_s2,m,b,const,eta)
+def get_A_Fb1_block(choose_s2, m, b, const, eta, h):
+	A_block = get_A_block(b,b+1,choose_s2,m,b,const,eta, h)
 	return scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
 
 
@@ -194,13 +194,13 @@ def get_P_mat():
 	return Pm
 
 
-def build_A_matrix(choose_s2,m,b,const,eta):
+def build_A_matrix(choose_s2, m, b, const, eta, h):
 	block_diags_ra = []
 	off_diags_ra = [] # array of diagonals
 	for i in range(1,n+1):
-		block_diags_ra.append(get_A_block(i,i,choose_s2,m,b,const,eta))
+		block_diags_ra.append(get_A_block(i,i,choose_s2,m,b,const,eta,h))
 	for i in range(1,n):
-		off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta).diagonal())
+		off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta,h).diagonal())
 	block_diag = scipy.sparse.block_diag(block_diags_ra)
 	off_diags = np.concatenate(off_diags_ra)
 	upper = scipy.sparse.diags(off_diags,n)
@@ -212,7 +212,7 @@ def build_A_matrix(choose_s2,m,b,const,eta):
 
 
 # Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
-def get_Hm(m,b,const,eta):
+def get_Hm(m, b, const, eta):
 	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
@@ -273,15 +273,15 @@ def get_Hm(m,b,const,eta):
 	return A
 
 
-def algo2_1(const,eta):
-	S1 = get_A_block(1,1,True,0,0,const,eta).A
+def algo2_1(const, eta, h):
+	S1 = get_A_block(1,1,True,0,0,const,eta,h).A
 	T = scipy.linalg.inv(S1)
 
 	S_ra = [S1]
 	T_ra = [T]
 	for m in range(2,n+1):
-		Amm = get_A_block(m,m,True,0,0,const,eta).A
-		Amm1 = get_A_block(m,m-1,True,0,0,const,eta).A
+		Amm = get_A_block(m,m,True,0,0,const,eta,h).A
+		Amm1 = get_A_block(m,m-1,True,0,0,const,eta,h).A
 		Am1m = np.copy(Amm1).T
 		Sm = Amm - Amm1@T@Am1m
 		T = scipy.linalg.inv(Sm)
@@ -292,10 +292,10 @@ def algo2_1(const,eta):
 	# rebuild A matrix from LDL factorization
 	L_ra = []
 	for k in range(1,n):
-		L = np.eye(n**2,dtype=complex)
-		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,m,b,const,eta)@T_ra[k-1]
+		L = np.eye(n**2,dtype=np.cdouble)
+		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,m,b,const,eta,h)@T_ra[k-1]
 		L_ra.append(L)
-	A_rebuilt = np.eye(n**2,dtype=complex)
+	A_rebuilt = np.eye(n**2,dtype=np.cdouble)
 	for i in range(1,n):
 		A_rebuilt = A_rebuilt@L_ra[i-1]
 	A_rebuilt = A_rebuilt@scipy.sparse.block_diag(S_ra)
@@ -314,20 +314,20 @@ def algo2_1(const,eta):
 	return T_ra, S_ra, L_ra, A_rebuilt
 
 
-def algo2_2(T_ra, S_ra, L_ra,const,eta):
-	u = np.copy(f_mat).astype(complex)
+def algo2_2(T_ra, S_ra, L_ra, const, eta):
+	u = np.copy(f_mat).astype(np.cdouble)
 	for m in range(1,n):
-		u[m] = u[m] - get_A_block(m+1,m,True,0,0,const,eta).A@T_ra[m-1]@u[m-1]
+		u[m] = u[m] - get_A_block(m+1,m,True,0,0,const,eta,h).A@T_ra[m-1]@u[m-1]
 	for m in range(1,n+1):
 		u[m-1] = T_ra[m-1]@u[m-1]
 	for m in range(n-1,0,-1):
-		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,0,const,eta)@u[m]
+		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,0,const,eta,h)@u[m]
 	return u
 
 
 
-def algo2_3(b,const,eta):
-	HF = get_A_FF_block(b,const,eta)
+def algo2_3(b, const, eta, h):
+	HF = get_A_FF_block(b,const,eta,h)
 	PF = get_P_mat()
 	# print(PF.A)
 	# sys.exit()
@@ -413,9 +413,9 @@ if __name__ == "__main__":
 	omega = 2*np.pi*lam + 1j*alpha # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 127 # interior grid size
+	n = 5#127 # interior grid size
 	h = 1 / (n + 1) # spatial step size
-	b = 12 # width of PML in number of grid points
+	b = 2# 12 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
 
 	u_mat = np.zeros((n,n))
@@ -429,7 +429,7 @@ if __name__ == "__main__":
 	# plt.show()
 	# sys.exit()
 
-	A = build_A_matrix(True,0,0,const,eta)
+	A = build_A_matrix(True,0,0,const,eta,h)
 	"""
 	u_true, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	u_true = u_true.reshape((n,n))
@@ -441,8 +441,9 @@ if __name__ == "__main__":
 
 	# print(np.real(A.A))
 	# print()
+	"""
 
-	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta)
+	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta,h)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const,eta)
 	print(np.max(np.abs(u_true - u_solved)))
 	plt.figure()
@@ -453,14 +454,14 @@ if __name__ == "__main__":
 	plt.imshow(np.imag(u_rebuilt))
 	plt.show()
 	# sys.exit()
-	"""
+	
 
 
 
 
 
 	
-	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3(b,const,eta)
+	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3(b,const,eta,h)
 
 	# initalize variables used in prec
 	PF = get_P_mat()
@@ -479,14 +480,14 @@ if __name__ == "__main__":
 	UF_inv = scipy.sparse.linalg.inv(UF)
 	LF_inv = scipy.sparse.linalg.inv(LF)
 	TF = PF.T@UF_inv@LF_inv@PF
-	A_b1F = get_A_Fb1_block(False,1,b,const,eta).T ################### CHECK HERE ################
-	A_Fb1 = get_A_Fb1_block(False,1,b,const,eta)
+	A_b1F = get_A_Fb1_block(False,1,b,const,eta,h).T ################### CHECK HERE ################
+	A_Fb1 = get_A_Fb1_block(False,1,b,const,eta,h)
 	A_ra = []
 	for i in range(1,n):
 		if i <= b:
-			A_ra.append(get_A_block(i,i+1,True,0,0,const,eta))
+			A_ra.append(get_A_block(i,i+1,True,0,0,const,eta,h))
 		else:
-			A_ra.append(get_A_block(i,i+1,False,b,i,const,eta))
+			A_ra.append(get_A_block(i,i+1,False,b,i,const,eta,h))
 	
 
 	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
