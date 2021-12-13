@@ -1,6 +1,4 @@
 
-# Alex Bocchieri
-
 import numpy as np
 import scipy.linalg
 import sys
@@ -115,72 +113,8 @@ def get_A_diag_block(a,choose_s2,m,b,const,eta):
 	return A_block
 
 
-
-# Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
-def get_Hm(m,b,const,eta):
-	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
-	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
-	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
-	c4_vec = np.zeros((b*n-n,), dtype=np.cdouble)
-	c5_vec = np.zeros((b*n,), dtype=np.cdouble)
-
-	c1_idx = 0
-	c2_idx = 0
-	c3_idx = 0
-	c4_idx = 0
-	c5_idx = 0
-	row_i = 1 # row in A matrix 1..bn
-	for j in range(1, b+1):
-		for i in range(1, n+1):
-			x1 = (i-.5)*h
-			x2 = j*h
-			c1 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
-			if row_i >= 2:
-				c1_vec[c1_idx] = c1
-				c1_idx += 1
-
-
-			x1 = (i+.5)*h
-			x2 = j*h
-			c2 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
-			if row_i <= b*n - 1:
-				c2_vec[c2_idx] = c2
-				c2_idx += 1
-
-			x1 = i*h
-			x2 = (j-.5)*h
-			c3 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
-			if row_i >= n+1:
-				c3_vec[c3_idx] = c3
-				c3_idx += 1
-
-			x1 = i*h
-			x2 = (j+.5)*h
-			c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
-			if row_i <= b*n - n:
-				c4_vec[c4_idx] = c4
-				c4_idx += 1
-
-			x1 = i*h
-			x2 = j*h
-			c5 = omega**2 / (s1(x1,const,eta)*s2m(x2,m,b,const,eta)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
-			c5_vec[c5_idx] = c5
-			c5_idx += 1
-
-			row_i += 1
-
-	c1_vec[n-1::n] = 0
-	c2_vec[n-1::n] = 0
-
-	A = scipy.sparse.diags(c5_vec) + scipy.sparse.diags(c1_vec,-1) \
-		+ scipy.sparse.diags(c2_vec,1) + scipy.sparse.diags(c3_vec, -n) \
-		+ scipy.sparse.diags(c4_vec, n)
-	return A
-
-
-
-# computes desired n x n block of A_a,b that corresponds to row b of grid
-# a,b = 1..n
+# computes desired n x n block of A_row,col that corresponds to "col'th" row of the grid
+# row,col = 1..n (indexes the block matrix)
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 def get_A_block(row,col,choose_s2,m,b,const,eta):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
@@ -258,6 +192,138 @@ def get_P_mat():
 			Pm[i*b+j, i+j*n] = 1
 	Pm = scipy.sparse.csc_matrix(Pm)
 	return Pm
+
+
+def build_A_matrix(choose_s2,m,b,const,eta):
+	block_diags_ra = []
+	off_diags_ra = [] # array of diagonals
+	for i in range(1,n+1):
+		block_diags_ra.append(get_A_block(i,i,choose_s2,m,b,const,eta))
+	for i in range(1,n):
+		off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta).diagonal())
+	block_diag = scipy.sparse.block_diag(block_diags_ra)
+	off_diags = np.concatenate(off_diags_ra)
+	upper = scipy.sparse.diags(off_diags,n)
+	lower = scipy.sparse.diags(off_diags,-n)
+	A = block_diag + upper + lower
+	return A
+
+
+
+
+# Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
+def get_Hm(m,b,const,eta):
+	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
+	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
+	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
+	c4_vec = np.zeros((b*n-n,), dtype=np.cdouble)
+	c5_vec = np.zeros((b*n,), dtype=np.cdouble)
+
+	c1_idx = 0
+	c2_idx = 0
+	c3_idx = 0
+	c4_idx = 0
+	c5_idx = 0
+	row_i = 1 # row in A matrix 1..bn
+	for j in range(1, b+1):
+		for i in range(1, n+1):
+			x1 = (i-.5)*h
+			x2 = j*h
+			c1 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
+			if row_i >= 2:
+				c1_vec[c1_idx] = c1
+				c1_idx += 1
+
+
+			x1 = (i+.5)*h
+			x2 = j*h
+			c2 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
+			if row_i <= b*n - 1:
+				c2_vec[c2_idx] = c2
+				c2_idx += 1
+
+			x1 = i*h
+			x2 = (j-.5)*h
+			c3 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			if row_i >= n+1:
+				c3_vec[c3_idx] = c3
+				c3_idx += 1
+
+			x1 = i*h
+			x2 = (j+.5)*h
+			c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			if row_i <= b*n - n:
+				c4_vec[c4_idx] = c4
+				c4_idx += 1
+
+			x1 = i*h
+			x2 = j*h
+			c5 = omega**2 / (s1(x1,const,eta)*s2m(x2,m,b,const,eta)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5_vec[c5_idx] = c5
+			c5_idx += 1
+
+			row_i += 1
+
+	c1_vec[n-1::n] = 0
+	c2_vec[n-1::n] = 0
+
+	A = scipy.sparse.diags(c5_vec) + scipy.sparse.diags(c1_vec,-1) \
+		+ scipy.sparse.diags(c2_vec,1) + scipy.sparse.diags(c3_vec, -n) \
+		+ scipy.sparse.diags(c4_vec, n)
+	return A
+
+
+def algo2_1(const,eta):
+	S1 = get_A_block(1,1,True,0,0,const,eta).A
+	T = scipy.linalg.inv(S1)
+
+	S_ra = [S1]
+	T_ra = [T]
+	for m in range(2,n+1):
+		Amm = get_A_block(m,m,True,0,0,const,eta).A
+		Amm1 = get_A_block(m,m-1,True,0,0,const,eta).A
+		Am1m = np.copy(Amm1).T
+		Sm = Amm - Amm1@T@Am1m
+		T = scipy.linalg.inv(Sm)
+		S_ra.append(Sm)
+		T_ra.append(T)
+	# end algo
+
+	# rebuild A matrix from LDL factorization
+	L_ra = []
+	for k in range(1,n):
+		L = np.eye(n**2,dtype=complex)
+		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,m,b,const,eta)@T_ra[k-1]
+		L_ra.append(L)
+	A_rebuilt = np.eye(n**2,dtype=complex)
+	for i in range(1,n):
+		A_rebuilt = A_rebuilt@L_ra[i-1]
+	A_rebuilt = A_rebuilt@scipy.sparse.block_diag(S_ra)
+	for i in range(n-1,0,-1):
+		A_rebuilt = A_rebuilt@(L_ra[i-1].T)
+	# print(np.real(A.A))
+	# print()
+	# print(np.real(A_rebuilt))
+	# print()
+	diff = A_rebuilt - A
+	print(np.imag(diff))
+	print("real part max diff = " + str(np.max(np.abs(np.real(diff)))))
+	print("imag part max diff = " + str(np.max(np.abs(np.imag(diff)))))
+	print("max diff magnitude = " + str(np.max(np.abs(diff))))
+	# sys.exit()
+	return T_ra, S_ra, L_ra, A_rebuilt
+
+
+def algo2_2(T_ra, S_ra, L_ra,const,eta):
+	u = np.copy(f_mat).astype(complex)
+	for m in range(1,n):
+		u[m] = u[m] - get_A_block(m+1,m,True,0,0,const,eta).A@T_ra[m-1]@u[m-1]
+	for m in range(1,n+1):
+		u[m-1] = T_ra[m-1]@u[m-1]
+	for m in range(n-1,0,-1):
+		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,0,const,eta)@u[m]
+	return u
+
 
 
 def algo2_3(b,const,eta):
@@ -340,82 +406,12 @@ def prec(f_vec, b, n, TF, A_b1F, A_Fb1, A_ra, mat_ra):
 	return u
 
 
-def build_A_matrix(choose_s2,m,b,const,eta):
-	block_diags_ra = []
-	off_diags_ra = [] # array of diagonals
-	for i in range(1,n+1):
-		block_diags_ra.append(get_A_block(i,i,choose_s2,m,b,const,eta))
-	for i in range(1,n):
-		off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta).diagonal())
-	block_diag = scipy.sparse.block_diag(block_diags_ra)
-	off_diags = np.concatenate(off_diags_ra)
-	upper = scipy.sparse.diags(off_diags,n)
-	lower = scipy.sparse.diags(off_diags,-n)
-	A = block_diag + upper + lower
-	return A
-
-def algo2_1(const,eta):
-	S1 = get_A_block(1,1,True,0,0,const,eta).A
-	T = scipy.linalg.inv(S1)
-
-	S_ra = [S1]
-	T_ra = [T]
-	for m in range(2,n+1):
-		Amm = get_A_block(m,m,True,0,0,const,eta).A
-		Amm1 = get_A_block(m,m-1,True,0,0,const,eta).A
-		Am1m = np.copy(Amm1).T
-		Sm = Amm - Amm1@T@Am1m
-		T = scipy.linalg.inv(Sm)
-		S_ra.append(Sm)
-		T_ra.append(T)
-	# end algo
-
-	# rebuild A matrix from LDL factorization
-	L_ra = []
-	for k in range(1,n):
-		L = np.eye(n**2,dtype=complex)
-		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,m,b,const,eta)@T_ra[k-1]
-		L_ra.append(L)
-	A_rebuilt = np.eye(n**2,dtype=complex)
-	for i in range(1,n):
-		A_rebuilt = A_rebuilt@L_ra[i-1]
-	A_rebuilt = A_rebuilt@scipy.sparse.block_diag(S_ra)
-	for i in range(n-1,0,-1):
-		A_rebuilt = A_rebuilt@(L_ra[i-1].T)
-	# print(np.real(A.A))
-	# print()
-	# print(np.real(A_rebuilt))
-	# print()
-	diff = A_rebuilt - A
-	print(np.imag(diff))
-	print("real part max diff = " + str(np.max(np.abs(np.real(diff)))))
-	print("imag part max diff = " + str(np.max(np.abs(np.imag(diff)))))
-	print("max diff magnitude = " + str(np.max(np.abs(diff))))
-	# sys.exit()
-	return T_ra, S_ra, L_ra, A_rebuilt
-
-
-def algo2_2(T_ra, S_ra, L_ra,const,eta):
-	u = np.copy(f_mat).astype(complex)
-	for m in range(1,n):
-		u[m] = u[m] - get_A_block(m+1,m,True,0,0,const,eta).A@T_ra[m-1]@u[m-1]
-	for m in range(1,n+1):
-		u[m-1] = T_ra[m-1]@u[m-1]
-	for m in range(n-1,0,-1):
-		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,0,const,eta)@u[m]
-	return u
-
-
-
-
-
 
 if __name__ == "__main__":
-	##### global variables set here are used in functions above #####
 	alpha = 2
 	lam = 4
 	omega = 2*np.pi*lam + 1j*alpha # angular frequency
-	const = .001 # appropriate positive constant for sigma1, sigma2
+	const = 1 # appropriate positive constant for sigma1, sigma2
 
 	n = 127 # interior grid size
 	h = 1 / (n + 1) # spatial step size
