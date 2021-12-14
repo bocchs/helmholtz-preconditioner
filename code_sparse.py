@@ -142,33 +142,10 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
 # uses s2m for aux prob on subgrid
 def get_A_FF_block(b, const, eta, h):
-	# A_block_diags = b*[scipy.sparse.csc_matrix((n, n), dtype=np.cdouble)]
-	# A_block_off_diags = (b-1)*[scipy.sparse.csc_matrix((n, n), dtype=np.cdouble)]
-	# for i in range(1,b+1):
-	# 	A_block_diags[i-1] = get_A_block(i,i,s2)
-	# for i in range(1,b):
-		# A_block_off_diags[i-1] = get_A_block(i,i+1,s2)
-	# # diag_blocks = scipy.linalg.block_diag(*A_block_diags)
-	# diag_blocks = scipy.sparse.block_diag(A_block_diags)
-	# diag_elems = diag_blocks.diagonal()
-	# off_diag_blocks = scipy.sparse.block_diag(A_block_off_diags)
-	# off_diag_elems = off_diag_blocks.diagonal()
-	# upper = scipy.sparse.diags(off_diag_elems,n)
-	# lower = scipy.sparse.diags(off_diag_elems,-n)
-	# middle = scipy.sparse.diags(diag_elems)
-	# return upper + middle + lower
 	diag_block_ra = []
-	A_block_off_diags_ra = []
-	for i in range(1,b):
-		A_block_off_diags_ra.append(get_A_block(i,i+1,False,i,b,const,eta,h))
-	off_diag_blocks = scipy.sparse.block_diag(A_block_off_diags_ra)
-	off_diag_elems = off_diag_blocks.diagonal()
-	upper = scipy.sparse.diags(off_diag_elems,n)
-	lower = scipy.sparse.diags(off_diag_elems,-n)
 	for i in range(1,b+1):
-		diag_block_ra.append(get_A_block(i,i,False,i,b,const,eta, h))
-	middle = scipy.sparse.block_diag(diag_block_ra)
-	A_FF = middle# + upper + lower
+		diag_block_ra.append(get_A_block(i,i,True,0,0,const,eta,h))
+	A_FF = scipy.sparse.block_diag(diag_block_ra)
 	return A_FF
 
 
@@ -306,7 +283,7 @@ def algo2_1(const, eta, h):
 	# print(np.real(A_rebuilt))
 	# print()
 	diff = A_rebuilt - A
-	print(np.imag(diff))
+	# print(np.imag(diff))
 	print("real part max diff = " + str(np.max(np.abs(np.real(diff)))))
 	print("imag part max diff = " + str(np.max(np.abs(np.imag(diff)))))
 	print("max diff magnitude = " + str(np.max(np.abs(diff))))
@@ -350,8 +327,9 @@ def algo2_3(b, const, eta, h):
 		# print()
 		Hm_ra.append(Hm)
 		PHP = Pm@Hm@Pm.T
-		print(np.real(PHP.A))
-		sys.exit()
+		# print(PHP.A)
+		# sys.exit()
+		# print(np.real(PHP.A))
 		lu = scipy.sparse.linalg.splu(PHP)
 		# print(np.real(lu.L.A))
 		# print()
@@ -407,15 +385,59 @@ def prec(f_vec, b, n, TF, A_b1F, A_Fb1, A_ra, mat_ra):
 
 
 
+def algo2_3_lu(b, const, eta, h):
+	HF = get_A_FF_block(b,const,eta,h).tocsc()
+	lu_HF = scipy.sparse.linalg.splu(HF)
+	lu_Hm_ra = []
+	for m in range(b+1,n+1):
+		Hm = get_Hm(m,b,const,eta,h).tocsc()
+		lu_Hm = scipy.sparse.linalg.splu(Hm)
+		lu_Hm_ra.append(lu_Hm)
+	return lu_HF, lu_Hm_ra
+
+
+def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra):
+	f_mat = f_vec.reshape((n,n))
+	uF = np.zeros((b,n), dtype=np.cdouble)
+	for i in range(b):
+		uF[i] = f_mat[i]
+	um_ra = np.zeros((n-b,n), dtype=np.cdouble)
+	for i in range(n-b):
+		um_ra[i] = f_mat[i+b]
+	u = np.vstack((uF, um_ra))
+	TFuF = lu_HF.solve(uF.flatten())
+	u[b] = u[b] - A_b1F@TFuF
+	for m in range(b+1, n):
+		A = A_ra[m-1].T
+		u_temp = np.zeros((b*n,), dtype=np.cdouble)
+		u_temp[-n:] = u[m-1]
+		u[m] = u[m] - A@lu_Hm_ra[m-b-1].solve(u_temp)[-n:]
+	uF = TFuF
+	for m in range(b+1, n+1):
+		u_temp = np.zeros((b*n,), dtype=np.cdouble)
+		u_temp[-n:] = u[m-1]
+		u[m-1] = u[m-1] - lu_Hm_ra[m-b-1].solve(u_temp)[-n:]
+	for m in range(n-1, b, -1):
+		A = A_ra[m-1]
+		Au_temp = np.zeros((b*n,), dtype=np.cdouble)
+		Au_temp[-n:] = A@u[m]
+		u[m-1] = u[m-1] - lu_Hm_ra[m-b-1].solve(Au_temp)[-n:]
+	Au = A_Fb1@u[b]
+	uF = uF - lu_HF.solve(Au)
+	for i in range(b):
+		u[i] = uF[i*n:(i+1)*n]
+	return u
+
+
 if __name__ == "__main__":
 	alpha = 2
-	lam = 4
-	omega = 2*np.pi*lam + 1j*alpha # angular frequency
+	wave_num = 4 # omega/2pi
+	omega = 2*np.pi*wave_num + 1j*alpha # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 5#127 # interior grid size
+	n = 31 # interior grid size
 	h = 1 / (n + 1) # spatial step size
-	b = 2# 12 # width of PML in number of grid points
+	b =  4 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
 
 	u_mat = np.zeros((n,n))
@@ -430,11 +452,12 @@ if __name__ == "__main__":
 	# sys.exit()
 
 	A = build_A_matrix(True,0,0,const,eta,h)
+	
 	"""
 	u_true, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	u_true = u_true.reshape((n,n))
 	plt.figure()
-	plt.imshow(np.imag(u_true))
+	plt.imshow(np.real(u_true))
 	# plt.show()
 	# sys.exit()
 
@@ -443,27 +466,25 @@ if __name__ == "__main__":
 	# print()
 	
 
+	
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta,h)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const,eta)
 	print(np.max(np.abs(u_true - u_solved)))
 	plt.figure()
-	plt.imshow(np.imag(u_solved))
+	plt.imshow(np.real(u_solved))
 	u_rebuilt, exit_code = scipy.sparse.linalg.gmres(A_rebuilt, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	plt.figure()
 	u_rebuilt = u_rebuilt.reshape((n,n))
-	plt.imshow(np.imag(u_rebuilt))
-	plt.show()
+	plt.imshow(np.real(u_rebuilt))
+	# plt.show()
 	# sys.exit()
 	"""
-
-
-
-
-
 	
-	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3(b,const,eta,h)
+
 
 	# initalize variables used in prec
+	"""
+	HF, LF, UF, Hm_ra, Lm_ra, Um_ra = algo2_3(b,const,eta,h)
 	PF = get_P_mat()
 	Pm = PF
 	mat_ra = []
@@ -480,6 +501,11 @@ if __name__ == "__main__":
 	UF_inv = scipy.sparse.linalg.inv(UF)
 	LF_inv = scipy.sparse.linalg.inv(LF)
 	TF = PF.T@UF_inv@LF_inv@PF
+	"""
+
+
+	lu_HF, lu_Hm_ra = algo2_3_lu(b,const,eta,h)
+
 	A_b1F = get_A_Fb1_block(False,1,b,const,eta,h).T ################### CHECK HERE ################
 	A_Fb1 = get_A_Fb1_block(False,1,b,const,eta,h)
 	A_ra = []
@@ -490,15 +516,18 @@ if __name__ == "__main__":
 			A_ra.append(get_A_block(i,i+1,False,b,i,const,eta,h))
 	
 
+	# M_old = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
+	# 				matvec=lambda f_vec: prec(f_vec, b, n, TF, A_b1F, A_Fb1, A_ra, mat_ra))
+
 	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
-					matvec=lambda f_vec: prec(f_vec, b, n, TF, A_b1F, A_Fb1, A_ra, mat_ra))
+					matvec=lambda f_vec: prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra))
 
 	# temp = M.matmat(A.A)
-	# plt.figure(1)
+	# plt.figure()
 	# plt.imshow(np.real(temp))
 	# plt.title('real(M*A)')
 	# plt.colorbar()
-	# plt.figure(2)
+	# plt.figure()
 	# plt.imshow(np.imag(temp))
 	# plt.title('imag(M*A)')
 	# plt.colorbar()
@@ -507,12 +536,10 @@ if __name__ == "__main__":
 	# print('cond(A) = ' + str(np.linalg.cond(A.A)))
 	# sys.exit()
 	# print(np.real(temp)) # should be approx identity matrix
-	print("AAA")
-	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, restart=30, maxiter=5, callback=print,callback_type='pr_norm')
+	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, restart=100, maxiter=5, callback=print, callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, callback=print, callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, restart=30, maxiter=1, callback=print,callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
-	print("BBB")
 	if exit_code > 0:
 		print("GMRES: convergence to tolerance not achieved")
 	elif exit_code < 0:
@@ -521,9 +548,14 @@ if __name__ == "__main__":
 		print("GMRES: convergence achieved")
 	
 	u = u.reshape((n,n))
-
-
-	# plt.imshow(np.abs(u))
+	plt.figure()
 	plt.imshow(np.real(u))
+
+
+	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M_old, tol=1e-3, restart=100, maxiter=5, callback=print, callback_type='pr_norm')
+	# u = u.reshape((n,n))
+	# plt.figure()
+	# plt.imshow(np.real(u))
+
 	plt.show()
 
