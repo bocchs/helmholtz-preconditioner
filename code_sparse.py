@@ -30,6 +30,7 @@ def s2(x,const,eta):
 	return (1 + 1j*sigma2(x,const,eta)/omega)**-1
 
 def s2m(x,m,b,const,eta):
+	t = (1 + 1j*sigma2(x-(m-b)*h,const,eta)/omega)**-1
 	return (1 + 1j*sigma2(x-(m-b)*h,const,eta)/omega)**-1
 
 # velocity field 1 described in paper
@@ -341,7 +342,7 @@ def algo2_3(b, const, eta, h):
 	# print(PF.A)
 	# sys.exit()
 	PHP = PF @ HF @ PF.T
-	# print(np.real(PHP.A))
+	print(np.real(PHP.A))
 	# print(PF.shape)
 	# print(HF.shape)
 	# sys.exit()
@@ -359,8 +360,8 @@ def algo2_3(b, const, eta, h):
 		# print()
 		Hm_ra.append(Hm)
 		PHP = Pm@Hm@Pm.T
-		# print(PHP.A)
-		# sys.exit()
+		print(np.real(PHP.A))
+		sys.exit()
 		# print(np.real(PHP.A))
 		lu = scipy.sparse.linalg.splu(PHP)
 		# print(np.real(lu.L.A))
@@ -463,13 +464,13 @@ def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
 
 if __name__ == "__main__":
 	alpha = 2
-	wave_num = 8 # omega/2pi
-	omega = 2*np.pi*wave_num # + 1j*alpha # angular frequency
-	const = 1 # appropriate positive constant for sigma1, sigma2
+	wave_num = 16 # omega/2pi
+	omega = 2*np.pi*wave_num  + 1j*alpha # angular frequency
+	const = 80 # appropriate positive constant for sigma1, sigma2
 
-	n = 5 # interior grid size
+	n = 127 # interior grid size
 	h = 1 / (n + 1) # spatial step size
-	b =  2 # width of PML in number of grid points
+	b =  12 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
 
 	# eta = 1/wave_num # width of PML in spatial dim
@@ -487,8 +488,8 @@ if __name__ == "__main__":
 	# sys.exit()
 
 	A = build_A_matrix(True,0,b,const,eta,h)
-	print(np.real(A.A))
-	sys.exit()
+	# print(np.real(A.A))
+	# sys.exit()
 	"""
 	u_true, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	u_true = u_true.reshape((n,n))
@@ -502,6 +503,7 @@ if __name__ == "__main__":
 	# print()
 
 	
+	"""
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta,h)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const,eta)
 	print(np.max(np.abs(u_true - u_solved)))
@@ -513,6 +515,7 @@ if __name__ == "__main__":
 	plt.imshow(np.real(u_rebuilt))
 	plt.show()
 	sys.exit()
+	"""
 	
 
 	
