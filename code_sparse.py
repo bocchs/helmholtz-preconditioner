@@ -5,7 +5,7 @@ import sys
 import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 import scipy.sparse
-np.set_printoptions(threshold=sys.maxsize,precision=3,linewidth=np.inf)
+np.set_printoptions(threshold=sys.maxsize,precision=4,linewidth=np.inf, suppress=True)
 
 def sigma1(x,const,eta):
 	if x <= eta:
@@ -120,23 +120,34 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
 	if row == col:
 		return get_A_diag_block(row,choose_s2,m,b,const,eta,h)
-	if abs(row-col) > 1:
+	elif col == row + 1:
+		c4_vec = np.zeros((n,), dtype=np.cdouble)
+		j = col
+		x2 = (j+.5)*h
+		for i in range(1, n+1):
+			x1 = i*h
+			if choose_s2:
+				c4 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
+			else:
+				c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			c4_vec[i-1] = c4
+		A_block = scipy.sparse.diags(c4_vec)
+		return A_block
+	elif row == col + 1:
+		c3_vec = np.zeros((n,), dtype=np.cdouble)
+		j = col
+		x2 = (j-.5)*h
+		for i in range(1, n+1):
+			x1 = i*h
+			if choose_s2:
+				c3 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
+			else:
+				c3 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			c3_vec[i-1] = c3
+		A_block = scipy.sparse.diags(c3_vec)
+		return A_block
+	else:
 		return sparse.csc_matrix((n, n), dtype=np.cdouble) # zeros
-
-	c4_vec = np.zeros((n,), dtype=np.cdouble)
-
-	j = col
-	x2 = (j+.5)*h
-	for i in range(1, n+1):
-		x1 = i*h
-		if choose_s2:
-			c4 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
-		else:
-			c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
-		c4_vec[i-1] = c4
-
-	A_block = scipy.sparse.diags(c4_vec)
-	return A_block
 
 
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
@@ -144,7 +155,7 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 def get_A_FF_block(b, const, eta, h):
 	diag_block_ra = []
 	for i in range(1,b+1):
-		diag_block_ra.append(get_A_block(i,i,True,0,0,const,eta,h))
+		diag_block_ra.append(get_A_block(i,i,True,0,b,const,eta,h))
 	A_FF = scipy.sparse.block_diag(diag_block_ra)
 	return A_FF
 
@@ -155,7 +166,13 @@ def get_A_FF_block(b, const, eta, h):
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
 def get_A_Fb1_block(choose_s2, m, b, const, eta, h):
 	A_block = get_A_block(b,b+1,choose_s2,m,b,const,eta, h)
-	return scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
+	block = scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
+	return block
+
+def get_A_b1F_block(choose_s2, m, b, const, eta, h):
+	A_block = get_A_block(b+1,b,choose_s2,m,b,const,eta, h)
+	block = scipy.sparse.hstack((scipy.sparse.csc_matrix((n, (b-1)*n), dtype=np.cdouble), A_block))
+	return block
 
 
 # computes permutation matrix from row major to column major ordering for one PML
@@ -173,15 +190,18 @@ def get_P_mat():
 
 def build_A_matrix(choose_s2, m, b, const, eta, h):
 	block_diags_ra = []
-	off_diags_ra = [] # array of diagonals
+	up_off_diags_ra = [] # array of diagonals
+	lo_off_diags_ra = []
 	for i in range(1,n+1):
 		block_diags_ra.append(get_A_block(i,i,choose_s2,m,b,const,eta,h))
 	for i in range(1,n):
-		off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta,h).diagonal())
+		up_off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta,h).diagonal())
+		lo_off_diags_ra.append(get_A_block(i+1,i,choose_s2,m,b,const,eta,h).diagonal())
 	block_diag = scipy.sparse.block_diag(block_diags_ra)
-	off_diags = np.concatenate(off_diags_ra)
-	upper = scipy.sparse.diags(off_diags,n)
-	lower = scipy.sparse.diags(off_diags,-n)
+	up_off_diags = np.concatenate(up_off_diags_ra)
+	lo_off_diags = np.concatenate(lo_off_diags_ra)
+	upper = scipy.sparse.diags(up_off_diags,n)
+	lower = scipy.sparse.diags(lo_off_diags,-n)
 	A = block_diag + upper + lower
 	return A
 
@@ -244,22 +264,29 @@ def get_Hm(m, b, const, eta, h):
 	c1_vec[n-1::n] = 0
 	c2_vec[n-1::n] = 0
 
-	A = scipy.sparse.diags(c5_vec) + scipy.sparse.diags(c1_vec,-1) \
-		+ scipy.sparse.diags(c2_vec,1) + scipy.sparse.diags(c3_vec, -n) \
-		+ scipy.sparse.diags(c4_vec, n)
+	A = scipy.sparse.diags(c5_vec) + \
+		scipy.sparse.diags(c1_vec,-1) + \
+		scipy.sparse.diags(c2_vec,1) + \
+		scipy.sparse.diags(c3_vec, -n) + \
+		scipy.sparse.diags(c4_vec, n)
 	return A
 
 
 def algo2_1(const, eta, h):
-	S1 = get_A_block(1,1,True,0,0,const,eta,h).A
+	S1 = get_A_block(1,1,True,0,b,const,eta,h).A
 	T = scipy.linalg.inv(S1)
 
 	S_ra = [S1]
 	T_ra = [T]
 	for m in range(2,n+1):
-		Amm = get_A_block(m,m,True,0,0,const,eta,h).A
-		Amm1 = get_A_block(m,m-1,True,0,0,const,eta,h).A
-		Am1m = np.copy(Amm1).T
+		Amm = get_A_block(m,m,True,0,b,const,eta,h).A
+		Amm1 = get_A_block(m,m-1,True,0,b,const,eta,h).A
+		Am1m = get_A_block(m-1,m,True,0,b,const,eta,h).A
+		print(Amm1)
+		print()
+		print(Am1m)
+		sys.exit()
+		# Am1m = np.copy(Amm1).T
 		Sm = Amm - Amm1@T@Am1m
 		T = scipy.linalg.inv(Sm)
 		S_ra.append(Sm)
@@ -270,7 +297,7 @@ def algo2_1(const, eta, h):
 	L_ra = []
 	for k in range(1,n):
 		L = np.eye(n**2,dtype=np.cdouble)
-		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,m,b,const,eta,h)@T_ra[k-1]
+		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,0,b,const,eta,h)@T_ra[k-1]
 		L_ra.append(L)
 	A_rebuilt = np.eye(n**2,dtype=np.cdouble)
 	for i in range(1,n):
@@ -283,22 +310,27 @@ def algo2_1(const, eta, h):
 	# print(np.real(A_rebuilt))
 	# print()
 	diff = A_rebuilt - A
-	# print(np.imag(diff))
+	print('diff:')
+	print(np.imag(diff))
+	print("A_rebuilt:")
+	print(np.imag(A_rebuilt))
+	print("A:")
+	print(np.imag(A.A))
 	print("real part max diff = " + str(np.max(np.abs(np.real(diff)))))
 	print("imag part max diff = " + str(np.max(np.abs(np.imag(diff)))))
 	print("max diff magnitude = " + str(np.max(np.abs(diff))))
-	# sys.exit()
+	sys.exit()
 	return T_ra, S_ra, L_ra, A_rebuilt
 
 
 def algo2_2(T_ra, S_ra, L_ra, const, eta):
 	u = np.copy(f_mat).astype(np.cdouble)
 	for m in range(1,n):
-		u[m] = u[m] - get_A_block(m+1,m,True,0,0,const,eta,h).A@T_ra[m-1]@u[m-1]
+		u[m] = u[m] - get_A_block(m+1,m,True,0,b,const,eta,h).A@T_ra[m-1]@u[m-1]
 	for m in range(1,n+1):
 		u[m-1] = T_ra[m-1]@u[m-1]
 	for m in range(n-1,0,-1):
-		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,0,const,eta,h)@u[m]
+		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,b,const,eta,h)@u[m]
 	return u
 
 
@@ -396,7 +428,7 @@ def algo2_3_lu(b, const, eta, h):
 	return lu_HF, lu_Hm_ra
 
 
-def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra):
+def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
 	f_mat = f_vec.reshape((n,n))
 	uF = np.zeros((b,n), dtype=np.cdouble)
 	for i in range(b):
@@ -408,7 +440,7 @@ def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra):
 	TFuF = lu_HF.solve(uF.flatten())
 	u[b] = u[b] - A_b1F@TFuF
 	for m in range(b+1, n):
-		A = A_ra[m-1].T
+		A = lo_A_ra[m-1]
 		u_temp = np.zeros((b*n,), dtype=np.cdouble)
 		u_temp[-n:] = u[m-1]
 		u[m] = u[m] - A@lu_Hm_ra[m-b-1].solve(u_temp)[-n:]
@@ -418,7 +450,7 @@ def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra):
 		u_temp[-n:] = u[m-1]
 		u[m-1] = u[m-1] - lu_Hm_ra[m-b-1].solve(u_temp)[-n:]
 	for m in range(n-1, b, -1):
-		A = A_ra[m-1]
+		A = up_A_ra[m-1]
 		Au_temp = np.zeros((b*n,), dtype=np.cdouble)
 		Au_temp[-n:] = A@u[m]
 		u[m-1] = u[m-1] - lu_Hm_ra[m-b-1].solve(Au_temp)[-n:]
@@ -431,40 +463,43 @@ def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra):
 
 if __name__ == "__main__":
 	alpha = 2
-	wave_num = 4 # omega/2pi
-	omega = 2*np.pi*wave_num + 1j*alpha # angular frequency
+	wave_num = 8 # omega/2pi
+	omega = 2*np.pi*wave_num # + 1j*alpha # angular frequency
 	const = 1 # appropriate positive constant for sigma1, sigma2
 
-	n = 31 # interior grid size
+	n = 5 # interior grid size
 	h = 1 / (n + 1) # spatial step size
-	b =  4 # width of PML in number of grid points
+	b =  2 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
+
+	# eta = 1/wave_num # width of PML in spatial dim
+	# b = int(eta // h)
 
 	u_mat = np.zeros((n,n))
 	r1 = .5
 	r2 = .5
 	f_mat = init_f1_mat(r1,r2)
 	f_vec = f_mat.flatten()
-	c_mat = init_c1_mat(r1,r2)
+	c_mat = init_c1_mat(r1,1/8)
 
 	# plt.imshow(np.real(c_mat))
 	# plt.show()
 	# sys.exit()
 
-	A = build_A_matrix(True,0,0,const,eta,h)
-	
+	A = build_A_matrix(True,0,b,const,eta,h)
+	print(np.real(A.A))
+
 	"""
 	u_true, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	u_true = u_true.reshape((n,n))
 	plt.figure()
 	plt.imshow(np.real(u_true))
-	# plt.show()
-	# sys.exit()
-
+	plt.show()
+	sys.exit()
+	"""
 
 	# print(np.real(A.A))
 	# print()
-	
 
 	
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta,h)
@@ -476,9 +511,10 @@ if __name__ == "__main__":
 	plt.figure()
 	u_rebuilt = u_rebuilt.reshape((n,n))
 	plt.imshow(np.real(u_rebuilt))
-	# plt.show()
-	# sys.exit()
-	"""
+	plt.show()
+	sys.exit()
+	
+
 	
 
 
@@ -506,21 +542,32 @@ if __name__ == "__main__":
 
 	lu_HF, lu_Hm_ra = algo2_3_lu(b,const,eta,h)
 
-	A_b1F = get_A_Fb1_block(False,1,b,const,eta,h).T ################### CHECK HERE ################
-	A_Fb1 = get_A_Fb1_block(False,1,b,const,eta,h)
+	A_b1F = get_A_b1F_block(True,0,b,const,eta,h)
+	A_Fb1 = get_A_Fb1_block(True,0,b,const,eta,h)
 	A_ra = []
+	up_A_ra = []
+	lo_A_ra = []
 	for i in range(1,n):
 		if i <= b:
-			A_ra.append(get_A_block(i,i+1,True,0,0,const,eta,h))
+			A_up = get_A_block(i,i+1,True,0,b,const,eta,h)
+			A_lo = get_A_block(i+1,i,True,0,b,const,eta,h)
+			up_A_ra.append(A_up)
+			lo_A_ra.append(A_lo)
+			A_ra.append(A_up)
 		else:
-			A_ra.append(get_A_block(i,i+1,False,b,i,const,eta,h))
+			A_up = get_A_block(i,i+1,False,i,b,const,eta,h)
+			A_lo = get_A_block(i+1,i,False,i,b,const,eta,h)
+			up_A_ra.append(A_up)
+			lo_A_ra.append(A_lo)
+			A_ra.append(A_up)
 	
 
 	# M_old = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
 	# 				matvec=lambda f_vec: prec(f_vec, b, n, TF, A_b1F, A_Fb1, A_ra, mat_ra))
 
+
 	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
-					matvec=lambda f_vec: prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, A_ra, lu_Hm_ra))
+					matvec=lambda x: prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra))
 
 	# temp = M.matmat(A.A)
 	# plt.figure()
