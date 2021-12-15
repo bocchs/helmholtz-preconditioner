@@ -464,11 +464,11 @@ def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
 
 if __name__ == "__main__":
 	alpha = 2
-	wave_num = 16 # omega/2pi
+	wave_num = 32 # omega/2pi
 	omega = 2*np.pi*wave_num  + 1j*alpha # angular frequency
-	const = 80 # appropriate positive constant for sigma1, sigma2
+	const = 10 # appropriate positive constant for sigma1, sigma2
 
-	n = 127 # interior grid size
+	n = 255 # interior grid size
 	h = 1 / (n + 1) # spatial step size
 	b =  12 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
@@ -586,10 +586,11 @@ if __name__ == "__main__":
 	# print('cond(A) = ' + str(np.linalg.cond(A.A)))
 	# sys.exit()
 	# print(np.real(temp)) # should be approx identity matrix
-	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, restart=100, maxiter=5, callback=print, callback_type='pr_norm')
+	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, restart=100, maxiter=50, callback=print, callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, callback=print, callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, restart=30, maxiter=1, callback=print,callback_type='pr_norm')
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
+	print(exit_code)
 	if exit_code > 0:
 		print("GMRES: convergence to tolerance not achieved")
 	elif exit_code < 0:
