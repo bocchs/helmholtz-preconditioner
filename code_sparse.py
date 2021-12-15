@@ -122,7 +122,7 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 		return get_A_diag_block(row,choose_s2,m,b,const,eta,h)
 	elif col == row + 1:
 		c4_vec = np.zeros((n,), dtype=np.cdouble)
-		j = col
+		j = row
 		x2 = (j+.5)*h
 		for i in range(1, n+1):
 			x1 = i*h
@@ -135,7 +135,7 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 		return A_block
 	elif row == col + 1:
 		c3_vec = np.zeros((n,), dtype=np.cdouble)
-		j = col
+		j = row
 		x2 = (j-.5)*h
 		for i in range(1, n+1):
 			x1 = i*h
@@ -488,7 +488,7 @@ if __name__ == "__main__":
 
 	A = build_A_matrix(True,0,b,const,eta,h)
 	print(np.real(A.A))
-
+	sys.exit()
 	"""
 	u_true, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=print, callback_type='pr_norm')
 	u_true = u_true.reshape((n,n))
