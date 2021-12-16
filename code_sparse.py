@@ -464,11 +464,11 @@ def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
 
 if __name__ == "__main__":
 	alpha = 2
-	wave_num = 32 # omega/2pi
+	wave_num = 64 # omega/2pi
 	omega = 2*np.pi*wave_num  + 1j*alpha # angular frequency
-	const = 50 # appropriate positive constant for sigma1, sigma2
+	const = 110 # appropriate positive constant for sigma1, sigma2
 
-	n = 255 # interior grid size
+	n = 511 # interior grid size
 	h = 1 / (n + 1) # spatial step size
 	b =  12 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
@@ -599,10 +599,21 @@ if __name__ == "__main__":
 	else:
 		print("GMRES: convergence achieved")
 	
-	u = u.reshape((n,n))
-	plt.figure()
-	plt.imshow(np.real(u))
+	u = np.flipud(u.reshape((n,n)))
+	fig = plt.figure()
+	plt.imshow(np.real(u), extent=[0,1,0,1])
+	plt.xlabel('x')
+	plt.ylabel('y')
+	t = 'N = ' + str(n) + '$^2$ \n $\omega /2 \pi$ = ' + str(wave_num) + ' \n const = ' + str(const) + ' \n Re(u)'
+	plt.title(t)
 	plt.colorbar()
+	plt.tight_layout()
+	# fig.subplots_adjust(
+	#     top=0.981,
+	#     bottom=0.049,
+	#     left=0.042,
+	#     right=0.981,
+	# )
 
 
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M_old, tol=1e-3, restart=100, maxiter=5, callback=print, callback_type='pr_norm')
