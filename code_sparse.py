@@ -17,23 +17,12 @@ def sigma1(x,const,eta):
 	else:
 		return 0 
 
-def sigma1_vec(x,const,eta):
-	x[x <= eta] = const / eta * ((x[x <= eta] - eta)/eta)**2
-	x[x >= 1 - eta] = const / eta * ((x[x >= 1 - eta] - 1 + eta)/eta)**2
-	x[np.logical_and(x > eta, x < 1-eta)] = 0
-	return x
-
 @jit(nopython=True)
 def sigma2(x,const,eta):
 	if x <= eta:
 		return const / eta * ((x - eta)/eta)**2
 	else:
 		return 0
-
-def sigma2_vec(x,const,eta):
-	x[x <= eta] = const / eta * ((x[x <= eta] - eta)/eta)**2
-	x[x > eta] = 0
-	return x
 
 @jit(nopython=True)
 def s1(x,const,eta,omega):
@@ -46,15 +35,9 @@ def s1_vec(x,const,eta,omega):
 def s2(x,const,eta,omega):
 	return (1 + 1j*sigma2(x,const,eta)/omega)**-1
 
-def s2_vec(x,const,eta,omega):
-	return (1 + 1j*sigma2_vec(x,const,eta)/omega)**-1
-
 @jit(nopython=True)
 def s2m(x,m,b,const,eta,omega,h):
 	return (1 + 1j*sigma2(x-(m-b)*h,const,eta)/omega)**-1
-
-def s2m_vec(x,m,b,const,eta,omega,h):
-	return (1 + 1j*sigma2_vec(x-(m-b)*h,const,eta)/omega)**-1
 
 # velocity field 1 described in paper
 def init_c1_mat(r1,r2,n):
@@ -239,7 +222,7 @@ def build_A_matrix(b, const, eta, omega, h, n, c_mat):
 	return A
 
 
-# Computes coeffs in Hm: bn x bn A matrix for PML's b x n subgrid for layer m
+# helper function for get_Hm()
 @jit(nopython=True)
 def get_Hm_coeffs(m, b, const, eta, omega, h, n, c_mat):
 	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
@@ -300,97 +283,6 @@ def get_Hm_coeffs(m, b, const, eta, omega, h, n, c_mat):
 # Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
 def get_Hm(m, b, const, eta, omega, h, n, c_mat):
 	c1_vec, c2_vec, c3_vec, c4_vec, c5_vec = get_Hm_coeffs(m, b, const, eta, omega, h, n, c_mat)
-	A = scipy.sparse.diags(c5_vec) + \
-		scipy.sparse.diags(c1_vec,-1) + \
-		scipy.sparse.diags(c2_vec,1) + \
-		scipy.sparse.diags(c3_vec, -n) + \
-		scipy.sparse.diags(c4_vec, n)
-	return A
-
-
-# Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
-def get_Hm_vec(m, b, const, eta, omega, h, n, c_mat):
-	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
-	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
-	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
-	c4_vec = np.zeros((b*n-n,), dtype=np.cdouble)
-	c5_vec = np.zeros((b*n,), dtype=np.cdouble)
-
-	i_vec = np.arange(1,n+1)
-	c1_x1_vec = (i_vec - .5)*h
-	c2_x1_vec = (i_vec + .5)*h
-	c3_x1_vec = i_vec*h
-	c4_x1_vec = i_vec*h
-	c5_x1_vec = i_vec*h
-
-	j_vec = np.arange(m-b+1,m+1)
-	c1_x2_vec = j_vec*h
-	c2_x2_vec = j_vec*h
-	c3_x2_vec = (j_vec - .5)*h
-	c4_x2_vec = (j_vec + .5)*h
-	c5_x2_vec = j_vec*h
-
-	c1_vec = 1/h**2 * (s1_vec(c1_x1_vec,const,eta,omega) / s2m_vec(c1_x2_vec,m,b,const,eta,omega,h))
-	c1_vec = c1_vec[1:]
-	c1_vec[n-1::n] = 0
-	c2_vec = 1/h**2 * (s1_vec(c2_x1_vec,const,eta,omega) / s2m_vec(c2_x2_vec,m,b,const,eta,omega,h))
-	c2_vec = c2_vec[:-1]
-	c2_vec[n-1::n] = 0
-	c3_vec = 1/h**2 * (s1_vec(c3_x1_vec,const,eta,omega) / s2m_vec(c3_x2_vec,m,b,const,eta,omega,h))
-	c3_vec = c3_vec[n:]
-	c4_vec = 1/h**2 * (s1_vec(c4_x1_vec,const,eta,omega) / s2m_vec(c4_x2_vec,m,b,const,eta,omega,h))
-	c4_vec = c4_vec[:-n]
-	c5_vec = 1/h**2 * (s1_vec(c5_x1_vec,const,eta,omega) / s2m_vec(c5_x2_vec,m,b,const,eta,omega,h))
-
-	"""
-	c1_idx = 0
-	c2_idx = 0
-	c3_idx = 0
-	c4_idx = 0
-	c5_idx = 0
-	row_i = 1 # row in A matrix 1..bn
-	for j in range(m-b+1, m+1):
-		for i in range(1, n+1):
-			x1 = (i-.5)*h
-			x2 = j*h
-			c1 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
-			if row_i >= 2:
-				c1_vec[c1_idx] = c1
-				c1_idx += 1
-
-			x1 = (i+.5)*h
-			x2 = j*h
-			c2 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
-			if row_i <= b*n - 1:
-				c2_vec[c2_idx] = c2
-				c2_idx += 1
-
-			x1 = i*h
-			x2 = (j-.5)*h
-			c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
-			if row_i >= n+1:
-				c3_vec[c3_idx] = c3
-				c3_idx += 1
-
-			x1 = i*h
-			x2 = (j+.5)*h
-			c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
-			if row_i <= b*n - n:
-				c4_vec[c4_idx] = c4
-				c4_idx += 1
-
-			x1 = i*h
-			x2 = j*h
-			c5 = omega**2 / (s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
-			c5_vec[c5_idx] = c5
-			c5_idx += 1
-
-			row_i += 1
-
-	c1_vec[n-1::n] = 0
-	c2_vec[n-1::n] = 0
-	"""
-
 	A = scipy.sparse.diags(c5_vec) + \
 		scipy.sparse.diags(c1_vec,-1) + \
 		scipy.sparse.diags(c2_vec,1) + \
