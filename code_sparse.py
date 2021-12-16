@@ -466,7 +466,7 @@ if __name__ == "__main__":
 	alpha = 2
 	wave_num = 32 # omega/2pi
 	omega = 2*np.pi*wave_num  + 1j*alpha # angular frequency
-	const = 10 # appropriate positive constant for sigma1, sigma2
+	const = 50 # appropriate positive constant for sigma1, sigma2
 
 	n = 255 # interior grid size
 	h = 1 / (n + 1) # spatial step size
@@ -495,6 +495,7 @@ if __name__ == "__main__":
 	u_true = u_true.reshape((n,n))
 	plt.figure()
 	plt.imshow(np.real(u_true))
+	plt.colorbar()
 	plt.show()
 	sys.exit()
 	"""
@@ -601,6 +602,7 @@ if __name__ == "__main__":
 	u = u.reshape((n,n))
 	plt.figure()
 	plt.imshow(np.real(u))
+	plt.colorbar()
 
 
 	# u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M_old, tol=1e-3, restart=100, maxiter=5, callback=print, callback_type='pr_norm')
