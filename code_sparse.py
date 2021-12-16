@@ -5,8 +5,10 @@ import sys
 import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 import scipy.sparse
+from numba import jit
 np.set_printoptions(threshold=sys.maxsize,precision=4,linewidth=np.inf, suppress=True)
 
+@jit(nopython=True)
 def sigma1(x,const,eta):
 	if x <= eta:
 		return const / eta * ((x - eta)/eta)**2
@@ -15,20 +17,44 @@ def sigma1(x,const,eta):
 	else:
 		return 0 
 
+def sigma1_vec(x,const,eta):
+	x[x <= eta] = const / eta * ((x[x <= eta] - eta)/eta)**2
+	x[x >= 1 - eta] = const / eta * ((x[x >= 1 - eta] - 1 + eta)/eta)**2
+	x[np.logical_and(x > eta, x < 1-eta)] = 0
+	return x
+
+@jit(nopython=True)
 def sigma2(x,const,eta):
 	if x <= eta:
 		return const / eta * ((x - eta)/eta)**2
 	else:
 		return 0
 
+def sigma2_vec(x,const,eta):
+	x[x <= eta] = const / eta * ((x[x <= eta] - eta)/eta)**2
+	x[x > eta] = 0
+	return x
+
+@jit(nopython=True)
 def s1(x,const,eta,omega):
 	return (1 + 1j*sigma1(x,const,eta)/omega)**-1
 
+def s1_vec(x,const,eta,omega):
+	return (1 + 1j*sigma1_vec(x,const,eta)/omega)**-1
+
+@jit(nopython=True)
 def s2(x,const,eta,omega):
 	return (1 + 1j*sigma2(x,const,eta)/omega)**-1
 
+def s2_vec(x,const,eta,omega):
+	return (1 + 1j*sigma2_vec(x,const,eta)/omega)**-1
+
+@jit(nopython=True)
 def s2m(x,m,b,const,eta,omega,h):
 	return (1 + 1j*sigma2(x-(m-b)*h,const,eta)/omega)**-1
+
+def s2m_vec(x,m,b,const,eta,omega,h):
+	return (1 + 1j*sigma2_vec(x-(m-b)*h,const,eta)/omega)**-1
 
 # velocity field 1 described in paper
 def init_c1_mat(r1,r2,n):
@@ -45,10 +71,9 @@ def init_f1_mat(r1,r2,omega,n):
 	return f_mat
 
 
-# computes desired n x n block of A_a,a that corresponds to a row a in the grid
-# a = 1..n
-# s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_diag_block(a, choose_s2, m, b, const, eta, omega, h, n, c_mat):
+# helper function for get_A_diag_block()
+@jit(nopython=True)
+def get_A_diag_block_coeffs(a, choose_s2, m, b, const, eta, omega, h, n, c_mat):
 	c1_vec = np.zeros((n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((n-1,), dtype=np.cdouble)
 	c5_vec = np.zeros((n,), dtype=np.cdouble)
@@ -105,42 +130,68 @@ def get_A_diag_block(a, choose_s2, m, b, const, eta, omega, h, n, c_mat):
 
 		row_i += 1
 
-	A_block = scipy.sparse.diags(c5_vec) + scipy.sparse.diags(c1_vec,-1) \
-				+ scipy.sparse.diags(c2_vec,1)
+	return c1_vec, c2_vec, c5_vec
+
+
+# computes desired n x n block of A_a,a that corresponds to a row a in the grid
+# a = 1..n
+# s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
+def get_A_diag_block(a, choose_s2, m, b, const, eta, omega, h, n, c_mat):
+	c1_vec, c2_vec, c5_vec = get_A_diag_block_coeffs(a, choose_s2, m, b, const, \
+														eta, omega, h, n, c_mat)
+	A_block = scipy.sparse.diags(c5_vec) \
+			+ scipy.sparse.diags(c1_vec,-1) \
+			+ scipy.sparse.diags(c2_vec,1)
 	return A_block
+
+
+# helper function for get_A_block()
+@jit(nopython=True)
+def get_upper_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat):
+	assert col == row + 1
+	c4_vec = np.zeros((n,), dtype=np.cdouble)
+	j = row
+	x2 = (j+.5)*h
+	for i in range(1, n+1):
+		x1 = i*h
+		if choose_s2:
+			c4 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
+		else:
+			c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
+		c4_vec[i-1] = c4
+	return c4_vec
+
+
+# helper function for get_A_block()
+@jit(nopython=True)
+def get_lower_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat):
+	assert row == col + 1
+	c3_vec = np.zeros((n,), dtype=np.cdouble)
+	j = row
+	x2 = (j-.5)*h
+	for i in range(1, n+1):
+		x1 = i*h
+		if choose_s2:
+			c3 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
+		else:
+			c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
+		c3_vec[i-1] = c3
+	return c3_vec
 
 
 # computes desired n x n block of A_row,col that corresponds to "col'th" row of the grid
 # row,col = 1..n (indexes the block matrix)
-# s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
+# choose_s2: True for using s2 for main prob on full grid, or False for using s2m for aux prob on subgrid
 def get_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
 	if row == col:
 		return get_A_diag_block(row,choose_s2,m,b,const,eta,omega,h,n,c_mat)
 	elif col == row + 1:
-		c4_vec = np.zeros((n,), dtype=np.cdouble)
-		j = row
-		x2 = (j+.5)*h
-		for i in range(1, n+1):
-			x1 = i*h
-			if choose_s2:
-				c4 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
-			else:
-				c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
-			c4_vec[i-1] = c4
+		c4_vec = get_upper_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
 		A_block = scipy.sparse.diags(c4_vec)
 		return A_block
 	elif row == col + 1:
-		c3_vec = np.zeros((n,), dtype=np.cdouble)
-		j = row
-		x2 = (j-.5)*h
-		for i in range(1, n+1):
-			x1 = i*h
-			if choose_s2:
-				c3 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
-			else:
-				c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
-			c3_vec[i-1] = c3
+		c3_vec = get_lower_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
 		A_block = scipy.sparse.diags(c3_vec)
 		return A_block
 	else:
@@ -148,7 +199,6 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat):
 
 
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
-# uses s2m for aux prob on subgrid
 def get_A_FF_block(b, const, eta, omega, h, n, c_mat):
 	diag_block_ra = []
 	for i in range(1,b+1):
@@ -157,15 +207,14 @@ def get_A_FF_block(b, const, eta, omega, h, n, c_mat):
 	return A_FF
 
 
-# computes bn x n block of A_F,b+1 that corresponds to first b rows of grid
-# take transpose of this result to get n x bn block of A_b+1,F
-# s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
+# computes bn x n block of A_(F,b+1) 
 def get_A_Fb1_block(b, const, eta, omega, h, n, c_mat):
 	A_block = get_A_block(b,b+1,True,0,b,const,eta,omega,h,n,c_mat)
 	block = scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
 	return block
 
 
+# computes n x bn block of A_(b+1,F)
 def get_A_b1F_block(b, const, eta, omega, h, n, c_mat):
 	A_block = get_A_block(b+1,b,True,0,b,const,eta,omega,h,n,c_mat)
 	block = scipy.sparse.hstack((scipy.sparse.csc_matrix((n, (b-1)*n), dtype=np.cdouble), A_block))
@@ -190,8 +239,9 @@ def build_A_matrix(b, const, eta, omega, h, n, c_mat):
 	return A
 
 
-# Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
-def get_Hm(m, b, const, eta, omega, h, n, c_mat):
+# Computes coeffs in Hm: bn x bn A matrix for PML's b x n subgrid for layer m
+@jit(nopython=True)
+def get_Hm_coeffs(m, b, const, eta, omega, h, n, c_mat):
 	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
@@ -244,6 +294,102 @@ def get_Hm(m, b, const, eta, omega, h, n, c_mat):
 
 	c1_vec[n-1::n] = 0
 	c2_vec[n-1::n] = 0
+	return c1_vec, c2_vec, c3_vec, c4_vec, c5_vec
+
+
+# Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
+def get_Hm(m, b, const, eta, omega, h, n, c_mat):
+	c1_vec, c2_vec, c3_vec, c4_vec, c5_vec = get_Hm_coeffs(m, b, const, eta, omega, h, n, c_mat)
+	A = scipy.sparse.diags(c5_vec) + \
+		scipy.sparse.diags(c1_vec,-1) + \
+		scipy.sparse.diags(c2_vec,1) + \
+		scipy.sparse.diags(c3_vec, -n) + \
+		scipy.sparse.diags(c4_vec, n)
+	return A
+
+
+# Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
+def get_Hm_vec(m, b, const, eta, omega, h, n, c_mat):
+	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
+	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
+	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
+	c4_vec = np.zeros((b*n-n,), dtype=np.cdouble)
+	c5_vec = np.zeros((b*n,), dtype=np.cdouble)
+
+	i_vec = np.arange(1,n+1)
+	c1_x1_vec = (i_vec - .5)*h
+	c2_x1_vec = (i_vec + .5)*h
+	c3_x1_vec = i_vec*h
+	c4_x1_vec = i_vec*h
+	c5_x1_vec = i_vec*h
+
+	j_vec = np.arange(m-b+1,m+1)
+	c1_x2_vec = j_vec*h
+	c2_x2_vec = j_vec*h
+	c3_x2_vec = (j_vec - .5)*h
+	c4_x2_vec = (j_vec + .5)*h
+	c5_x2_vec = j_vec*h
+
+	c1_vec = 1/h**2 * (s1_vec(c1_x1_vec,const,eta,omega) / s2m_vec(c1_x2_vec,m,b,const,eta,omega,h))
+	c1_vec = c1_vec[1:]
+	c1_vec[n-1::n] = 0
+	c2_vec = 1/h**2 * (s1_vec(c2_x1_vec,const,eta,omega) / s2m_vec(c2_x2_vec,m,b,const,eta,omega,h))
+	c2_vec = c2_vec[:-1]
+	c2_vec[n-1::n] = 0
+	c3_vec = 1/h**2 * (s1_vec(c3_x1_vec,const,eta,omega) / s2m_vec(c3_x2_vec,m,b,const,eta,omega,h))
+	c3_vec = c3_vec[n:]
+	c4_vec = 1/h**2 * (s1_vec(c4_x1_vec,const,eta,omega) / s2m_vec(c4_x2_vec,m,b,const,eta,omega,h))
+	c4_vec = c4_vec[:-n]
+	c5_vec = 1/h**2 * (s1_vec(c5_x1_vec,const,eta,omega) / s2m_vec(c5_x2_vec,m,b,const,eta,omega,h))
+
+	"""
+	c1_idx = 0
+	c2_idx = 0
+	c3_idx = 0
+	c4_idx = 0
+	c5_idx = 0
+	row_i = 1 # row in A matrix 1..bn
+	for j in range(m-b+1, m+1):
+		for i in range(1, n+1):
+			x1 = (i-.5)*h
+			x2 = j*h
+			c1 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
+			if row_i >= 2:
+				c1_vec[c1_idx] = c1
+				c1_idx += 1
+
+			x1 = (i+.5)*h
+			x2 = j*h
+			c2 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
+			if row_i <= b*n - 1:
+				c2_vec[c2_idx] = c2
+				c2_idx += 1
+
+			x1 = i*h
+			x2 = (j-.5)*h
+			c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
+			if row_i >= n+1:
+				c3_vec[c3_idx] = c3
+				c3_idx += 1
+
+			x1 = i*h
+			x2 = (j+.5)*h
+			c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
+			if row_i <= b*n - n:
+				c4_vec[c4_idx] = c4
+				c4_idx += 1
+
+			x1 = i*h
+			x2 = j*h
+			c5 = omega**2 / (s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5_vec[c5_idx] = c5
+			c5_idx += 1
+
+			row_i += 1
+
+	c1_vec[n-1::n] = 0
+	c2_vec[n-1::n] = 0
+	"""
 
 	A = scipy.sparse.diags(c5_vec) + \
 		scipy.sparse.diags(c1_vec,-1) + \
@@ -434,7 +580,9 @@ def run_solver(n,b,wave_num,const,alpha):
 
 
 if __name__ == "__main__":
-	run_solver(127,12,8,80,2)
+	# run_solver(127,12,16,80,2)
+	# run_solver(255,12,32,50,2)
+	run_solver(1023,12,128,90,2) # 80 had large numbers
 	sys.exit()
 
 	alpha = 2
