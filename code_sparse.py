@@ -6,7 +6,6 @@ import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 import scipy.sparse
 from numba import jit
-np.set_printoptions(threshold=sys.maxsize,precision=4,linewidth=np.inf, suppress=True)
 
 @jit(nopython=True)
 def sigma1(x,const,eta):
@@ -27,9 +26,6 @@ def sigma2(x,const,eta):
 @jit(nopython=True)
 def s1(x,const,eta,omega):
 	return (1 + 1j*sigma1(x,const,eta)/omega)**-1
-
-def s1_vec(x,const,eta,omega):
-	return (1 + 1j*sigma1_vec(x,const,eta)/omega)**-1
 
 @jit(nopython=True)
 def s2(x,const,eta,omega):
@@ -105,9 +101,13 @@ def get_A_diag_block_coeffs(a, choose_s2, m, b, const, eta, omega, h, n, c_mat):
 		x1 = i*h
 		x2 = j*h
 		if choose_s2:
-			c5 = omega**2 / (s1(x1,const,eta,omega)*s2(x2,const,eta,omega)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5 = omega**2 / \
+				(s1(x1,const,eta,omega)*s2(x2,const,eta,omega)*c_mat[i-1,j-1]**2) \
+				 - (c1 + c2 + c3 + c4)
 		else:
-			c5 = omega**2 / (s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5 = omega**2 / \
+				(s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) \
+				 - (c1 + c2 + c3 + c4)
 		c5_vec[c5_idx] = c5
 		c5_idx += 1
 
@@ -164,17 +164,20 @@ def get_lower_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
 
 # computes desired n x n block of A_row,col that corresponds to "col'th" row of the grid
 # row,col = 1..n (indexes the block matrix)
-# choose_s2: True for using s2 for main prob on full grid, or False for using s2m for aux prob on subgrid
+# choose_s2: True for using s2 for main prob on full grid, 
+#            False for using s2m for aux prob on subgrid
 def get_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
 	if row == col:
 		return get_A_diag_block(row,choose_s2,m,b,const,eta,omega,h,n,c_mat)
 	elif col == row + 1:
-		c4_vec = get_upper_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
+		c4_vec = \
+			get_upper_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
 		A_block = scipy.sparse.diags(c4_vec)
 		return A_block
 	elif row == col + 1:
-		c3_vec = get_lower_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
+		c3_vec = \
+			get_lower_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n, c_mat)
 		A_block = scipy.sparse.diags(c3_vec)
 		return A_block
 	else:
@@ -193,14 +196,16 @@ def get_A_FF_block(b, const, eta, omega, h, n, c_mat):
 # computes bn x n block of A_(F,b+1) 
 def get_A_Fb1_block(b, const, eta, omega, h, n, c_mat):
 	A_block = get_A_block(b,b+1,True,0,b,const,eta,omega,h,n,c_mat)
-	block = scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
+	block = scipy.sparse.vstack((\
+			scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
 	return block
 
 
 # computes n x bn block of A_(b+1,F)
 def get_A_b1F_block(b, const, eta, omega, h, n, c_mat):
 	A_block = get_A_block(b+1,b,True,0,b,const,eta,omega,h,n,c_mat)
-	block = scipy.sparse.hstack((scipy.sparse.csc_matrix((n, (b-1)*n), dtype=np.cdouble), A_block))
+	block = scipy.sparse.hstack((\
+			scipy.sparse.csc_matrix((n, (b-1)*n), dtype=np.cdouble), A_block))
 	return block
 
 
@@ -211,8 +216,10 @@ def build_A_matrix(b, const, eta, omega, h, n, c_mat):
 	for i in range(1,n+1):
 		block_diags_ra.append(get_A_block(i,i,True,0,b,const,eta,omega,h,n,c_mat))
 	for i in range(1,n):
-		up_off_diags_ra.append(get_A_block(i,i+1,True,0,b,const,eta,omega,h,n,c_mat).diagonal())
-		lo_off_diags_ra.append(get_A_block(i+1,i,True,0,b,const,eta,omega,h,n,c_mat).diagonal())
+		up_off_diags_ra.append(\
+				get_A_block(i,i+1,True,0,b,const,eta,omega,h,n,c_mat).diagonal())
+		lo_off_diags_ra.append(\
+				get_A_block(i+1,i,True,0,b,const,eta,omega,h,n,c_mat).diagonal())
 	block_diag = scipy.sparse.block_diag(block_diags_ra)
 	up_off_diags = np.concatenate(up_off_diags_ra)
 	lo_off_diags = np.concatenate(lo_off_diags_ra)
@@ -269,7 +276,9 @@ def get_Hm_coeffs(m, b, const, eta, omega, h, n, c_mat):
 
 			x1 = i*h
 			x2 = j*h
-			c5 = omega**2 / (s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5 = omega**2 / \
+				(s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) \
+				- (c1 + c2 + c3 + c4)
 			c5_vec[c5_idx] = c5
 			c5_idx += 1
 
@@ -343,7 +352,7 @@ def algo2_2(T_ra, S_ra, L_ra, const, eta, omega, b, h, n, c_mat, f_mat):
 	return u
 
 
-def algo2_3_lu(b, const, eta, omega, h, n, c_mat):
+def algo2_3(b, const, eta, omega, h, n, c_mat):
 	HF = get_A_FF_block(b,const,eta,omega,h,n,c_mat).tocsc()
 	lu_HF = scipy.sparse.linalg.splu(HF)
 	lu_Hm_ra = []
@@ -354,8 +363,7 @@ def algo2_3_lu(b, const, eta, omega, h, n, c_mat):
 	return lu_HF, lu_Hm_ra
 
 
-# algo 2.4
-def prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
+def algo2_4(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
 	f_mat = f_vec.reshape((n,n))
 	uF = np.zeros((b,n), dtype=np.cdouble)
 	for i in range(b):
@@ -394,10 +402,10 @@ def run_solver(n,b,wave_num,const,alpha):
 	b: width of PML in number of grid points
 	wave_num: omega/2pi (avg wave number)
 	const: appropriate positive constant for sigma1, sigma2
-	alpha: small positive constant to adjust omega
+	alpha: small positive constant to adjust omega (paper uses 2)
 	"""
 
-	omega = 2*np.pi*wave_num  + 1j*alpha # angular frequency
+	omega = 2*np.pi*wave_num + 1j*alpha # angular frequency
 	h = 1 / (n + 1) # spatial step size
 	eta = b*h # width of PML in spatial dim
 	r1 = .5
@@ -409,7 +417,7 @@ def run_solver(n,b,wave_num,const,alpha):
 	A = build_A_matrix(b,const,eta,omega,h,n,c_mat)
 
 
-	#------- test LDL factorization of A and plot the resulting solution ----------
+	#--- test LDL factorization of A and plot the solution using algos 2.1, 2.2 -----
 	"""
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(b,const,eta,omega,h,n,c_mat)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const, eta, omega, b, h, n, c_mat, f_mat)
@@ -430,7 +438,7 @@ def run_solver(n,b,wave_num,const,alpha):
 
 	# use preconditioner:
 
-	lu_HF, lu_Hm_ra = algo2_3_lu(b,const,eta,omega,h,n,c_mat)
+	lu_HF, lu_Hm_ra = algo2_3(b,const,eta,omega,h,n,c_mat)
 
 	# prepare A blocks to be used in the preconditioner
 	A_b1F = get_A_b1F_block(b,const,eta,omega,h,n,c_mat)
@@ -439,19 +447,21 @@ def run_solver(n,b,wave_num,const,alpha):
 	lo_A_ra = []
 	for i in range(1,n):
 		if i <= b:
+			# first b layers use s2()
 			A_up = get_A_block(i,i+1,True,0,b,const,eta,omega,h,n,c_mat)
 			A_lo = get_A_block(i+1,i,True,0,b,const,eta,omega,h,n,c_mat)
 			up_A_ra.append(A_up)
 			lo_A_ra.append(A_lo)
 		else:
+			# layers b+1 to n use s2m()
 			A_up = get_A_block(i,i+1,False,i,b,const,eta,omega,h,n,c_mat)
 			A_lo = get_A_block(i+1,i,False,i,b,const,eta,omega,h,n,c_mat)
 			up_A_ra.append(A_up)
 			lo_A_ra.append(A_lo)
 	
 
-	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
-					matvec=lambda x: prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra))
+	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), matvec=lambda x: \
+			algo2_4(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra))
 
 
 	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3)
@@ -461,85 +471,17 @@ def run_solver(n,b,wave_num,const,alpha):
 	plt.imshow(np.real(u), extent=[0,1,0,1])
 	plt.xlabel('x')
 	plt.ylabel('y')
-	t = 'N = ' + str(n) + '$^2$ \n $\omega /(2\pi)$ = ' + str(wave_num) + ' \n const = ' + str(const) + ' \n Real(u)'
+	t = 'N = ' + str(n) + '$^2$ \n $\omega /(2\pi)$ = ' \
+			+ str(wave_num) + ' \n const = ' + str(const) + ' \n Real(u)'
 	plt.title(t)
 	plt.colorbar()
 	plt.tight_layout()
 	fig.subplots_adjust(left=-0.4)
 	plt.show()
-
-
 
 
 if __name__ == "__main__":
 	# run_solver(127,12,16,80,2)
-	# run_solver(255,12,32,50,2)
-	run_solver(1023,12,128,90,2) # 80 had large numbers
-	sys.exit()
+	run_solver(255,12,32,50,2)
+	# run_solver(1023,12,128,90,2) # 80 had large numbers
 
-	alpha = 2
-	wave_num = 8 # omega/2pi (avg wave number)
-	omega = 2*np.pi*wave_num  + 1j*alpha # angular frequency
-	const = 80 # appropriate positive constant for sigma1, sigma2
-
-	n = 127 # interior grid size
-	h = 1 / (n + 1) # spatial step size
-	b = 12 # width of PML in number of grid points
-	eta = b*h # width of PML in spatial dim
-
-	u_mat = np.zeros((n,n))
-	r1 = .5
-	r2 = .5
-	f_mat = init_f1_mat(r1,r2,omega,n)
-	f_vec = f_mat.flatten()
-	c_mat = init_c1_mat(r1,1/8,n)
-
-	A = build_A_matrix(b,const,eta,omega,h,n)
-
-	# test LDL factorization of A
-	"""
-	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(b,const,eta,omega,h,n)
-	u_solved = algo2_2(T_ra, S_ra, L_ra,const, eta, omega, n)
-	plt.imshow(np.real(u_solved))
-	plt.title('Solution using Algo 2.1 and 2.2')
-	plt.show()
-	sys.exit()
-	"""
-
-	lu_HF, lu_Hm_ra = algo2_3_lu(b,const,eta,omega,h,n,c_mat)
-
-	# prepare A blocks to be used in the preconditioner
-	A_b1F = get_A_b1F_block(b,const,eta,omega,h,n)
-	A_Fb1 = get_A_Fb1_block(b,const,eta,omega,h,n)
-	up_A_ra = []
-	lo_A_ra = []
-	for i in range(1,n):
-		if i <= b:
-			A_up = get_A_block(i,i+1,True,0,b,const,eta,omega,h,n)
-			A_lo = get_A_block(i+1,i,True,0,b,const,eta,omega,h,n)
-			up_A_ra.append(A_up)
-			lo_A_ra.append(A_lo)
-		else:
-			A_up = get_A_block(i,i+1,False,i,b,const,eta,omega,h,n)
-			A_lo = get_A_block(i+1,i,False,i,b,const,eta,omega,h,n)
-			up_A_ra.append(A_up)
-			lo_A_ra.append(A_lo)
-	
-
-	M = scipy.sparse.linalg.LinearOperator((n**2,n**2), \
-					matvec=lambda x: prec_lu(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra))
-
-
-	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3)
-
-	u = np.flipud(u.reshape((n,n)))
-	fig = plt.figure()
-	plt.imshow(np.real(u), extent=[0,1,0,1])
-	plt.xlabel('x')
-	plt.ylabel('y')
-	t = 'N = ' + str(n) + '$^2$ \n $\omega /(2\pi)$ = ' + str(wave_num) + ' \n const = ' + str(const) + ' \n Real(u)'
-	plt.title(t)
-	plt.colorbar()
-	plt.tight_layout()
-	fig.subplots_adjust(left=-0.4)
-	plt.show()
