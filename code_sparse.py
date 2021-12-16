@@ -21,25 +21,24 @@ def sigma2(x,const,eta):
 	else:
 		return 0
 
-def s1(x,const,eta):
+def s1(x,const,eta,omega):
 	return (1 + 1j*sigma1(x,const,eta)/omega)**-1
 
-def s2(x,const,eta):
+def s2(x,const,eta,omega):
 	return (1 + 1j*sigma2(x,const,eta)/omega)**-1
 
-def s2m(x,m,b,const,eta):
-	t = (1 + 1j*sigma2(x-(m-b)*h,const,eta)/omega)**-1
+def s2m(x,m,b,const,eta,omega,h):
 	return (1 + 1j*sigma2(x-(m-b)*h,const,eta)/omega)**-1
 
 # velocity field 1 described in paper
-def init_c1_mat(r1,r2):
+def init_c1_mat(r1,r2,n):
 	x_i = np.linspace(0,1,n+2)
 	xx, yy = np.meshgrid(x_i,x_i)
 	c_mat = 4/3 * (1-.5*np.exp(-32*((xx-r1)**2 + (yy-r2)**2)))
 	return c_mat
 
 # external force 1 described in paper
-def init_f1_mat(r1,r2):
+def init_f1_mat(r1,r2,omega,n):
 	x_i = np.linspace(0,1,n+2) # n+2 points in each dimension, including boundary
 	xx, yy = np.meshgrid(x_i[1:-1],x_i[1:-1]) # n interior points
 	f_mat = np.exp(-(4*omega/np.pi)**2*((xx-r1)**2 + (yy-r2)**2))
@@ -49,7 +48,7 @@ def init_f1_mat(r1,r2):
 # computes desired n x n block of A_a,a that corresponds to a row a in the grid
 # a = 1..n
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_diag_block(a, choose_s2, m, b, const, eta, h):
+def get_A_diag_block(a, choose_s2, m, b, const, eta, omega, h, n):
 	c1_vec = np.zeros((n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((n-1,), dtype=np.cdouble)
 	c5_vec = np.zeros((n,), dtype=np.cdouble)
@@ -64,9 +63,9 @@ def get_A_diag_block(a, choose_s2, m, b, const, eta, h):
 		x1 = (i-.5)*h
 		x2 = j*h
 		if choose_s2:
-			c1 = 1/h**2 * (s1(x1,const,eta) / s2(x2,const,eta))
+			c1 = 1/h**2 * (s1(x1,const,eta,omega) / s2(x2,const,eta,omega))
 		else:
-			c1 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
+			c1 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
 		if row_i >= 2:
 			c1_vec[c1_idx] = c1
 			c1_idx += 1
@@ -74,9 +73,9 @@ def get_A_diag_block(a, choose_s2, m, b, const, eta, h):
 		x1 = (i+.5)*h
 		x2 = j*h
 		if choose_s2:
-			c2 = 1/h**2 * (s1(x1,const,eta) / s2(x2,const,eta))
+			c2 = 1/h**2 * (s1(x1,const,eta,omega) / s2(x2,const,eta,omega))
 		else:
-			c2 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))			
+			c2 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))			
 		if row_i <= n - 1:
 			c2_vec[c2_idx] = c2
 			c2_idx += 1
@@ -84,23 +83,23 @@ def get_A_diag_block(a, choose_s2, m, b, const, eta, h):
 		x1 = i*h
 		x2 = (j-.5)*h
 		if choose_s2:
-			c3 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
+			c3 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
 		else:
-			c3 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
 
 		x1 = i*h
 		x2 = (j+.5)*h
 		if choose_s2:
-			c4 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
+			c4 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
 		else:
-			c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
 
 		x1 = i*h
 		x2 = j*h
 		if choose_s2:
-			c5 = omega**2 / (s1(x1,const,eta)*s2(x2,const,eta)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5 = omega**2 / (s1(x1,const,eta,omega)*s2(x2,const,eta,omega)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
 		else:
-			c5 = omega**2 / (s1(x1,const,eta)*s2m(x2,m,b,const,eta)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5 = omega**2 / (s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
 		c5_vec[c5_idx] = c5
 		c5_idx += 1
 
@@ -114,10 +113,10 @@ def get_A_diag_block(a, choose_s2, m, b, const, eta, h):
 # computes desired n x n block of A_row,col that corresponds to "col'th" row of the grid
 # row,col = 1..n (indexes the block matrix)
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_block(row, col, choose_s2, m, b, const, eta, h):
+def get_A_block(row, col, choose_s2, m, b, const, eta, omega, h, n):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
 	if row == col:
-		return get_A_diag_block(row,choose_s2,m,b,const,eta,h)
+		return get_A_diag_block(row,choose_s2,m,b,const,eta,omega,h,n)
 	elif col == row + 1:
 		c4_vec = np.zeros((n,), dtype=np.cdouble)
 		j = row
@@ -125,9 +124,9 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 		for i in range(1, n+1):
 			x1 = i*h
 			if choose_s2:
-				c4 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
+				c4 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
 			else:
-				c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+				c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
 			c4_vec[i-1] = c4
 		A_block = scipy.sparse.diags(c4_vec)
 		return A_block
@@ -138,9 +137,9 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 		for i in range(1, n+1):
 			x1 = i*h
 			if choose_s2:
-				c3 = 1/h**2 * (s2(x2,const,eta) / s1(x1,const,eta))
+				c3 = 1/h**2 * (s2(x2,const,eta,omega) / s1(x1,const,eta,omega))
 			else:
-				c3 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+				c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
 			c3_vec[i-1] = c3
 		A_block = scipy.sparse.diags(c3_vec)
 		return A_block
@@ -150,10 +149,10 @@ def get_A_block(row, col, choose_s2, m, b, const, eta, h):
 
 # computes bn x bn block of A_F,F that corresponds to first b rows of grid
 # uses s2m for aux prob on subgrid
-def get_A_FF_block(b, const, eta, h):
+def get_A_FF_block(b, const, eta, omega, h, n):
 	diag_block_ra = []
 	for i in range(1,b+1):
-		diag_block_ra.append(get_A_block(i,i,True,0,b,const,eta,h))
+		diag_block_ra.append(get_A_block(i,i,True,0,b,const,eta,omega,h,n))
 	A_FF = scipy.sparse.block_diag(diag_block_ra)
 	return A_FF
 
@@ -161,26 +160,27 @@ def get_A_FF_block(b, const, eta, h):
 # computes bn x n block of A_F,b+1 that corresponds to first b rows of grid
 # take transpose of this result to get n x bn block of A_b+1,F
 # s2: arg should be either s2 for main prob on full grid or s2m for aux prob on subgrid
-def get_A_Fb1_block(choose_s2, m, b, const, eta, h):
-	A_block = get_A_block(b,b+1,choose_s2,m,b,const,eta, h)
+def get_A_Fb1_block(b, const, eta, omega, h, n):
+	A_block = get_A_block(b,b+1,True,0,b,const,eta,omega,h,n)
 	block = scipy.sparse.vstack((scipy.sparse.csc_matrix(((b-1)*n, n), dtype=np.cdouble), A_block))
 	return block
 
-def get_A_b1F_block(choose_s2, m, b, const, eta, h):
-	A_block = get_A_block(b+1,b,choose_s2,m,b,const,eta, h)
+
+def get_A_b1F_block(b, const, eta, omega, h, n):
+	A_block = get_A_block(b+1,b,True,0,b,const,eta,omega,h,n)
 	block = scipy.sparse.hstack((scipy.sparse.csc_matrix((n, (b-1)*n), dtype=np.cdouble), A_block))
 	return block
 
 
-def build_A_matrix(choose_s2, m, b, const, eta, h):
+def build_A_matrix(b, const, eta, omega, h, n):
 	block_diags_ra = []
 	up_off_diags_ra = [] # array of diagonals
 	lo_off_diags_ra = []
 	for i in range(1,n+1):
-		block_diags_ra.append(get_A_block(i,i,choose_s2,m,b,const,eta,h))
+		block_diags_ra.append(get_A_block(i,i,True,0,b,const,eta,omega,h,n))
 	for i in range(1,n):
-		up_off_diags_ra.append(get_A_block(i,i+1,choose_s2,m,b,const,eta,h).diagonal())
-		lo_off_diags_ra.append(get_A_block(i+1,i,choose_s2,m,b,const,eta,h).diagonal())
+		up_off_diags_ra.append(get_A_block(i,i+1,True,0,b,const,eta,omega,h,n).diagonal())
+		lo_off_diags_ra.append(get_A_block(i+1,i,True,0,b,const,eta,omega,h,n).diagonal())
 	block_diag = scipy.sparse.block_diag(block_diags_ra)
 	up_off_diags = np.concatenate(up_off_diags_ra)
 	lo_off_diags = np.concatenate(lo_off_diags_ra)
@@ -191,7 +191,7 @@ def build_A_matrix(choose_s2, m, b, const, eta, h):
 
 
 # Computes Hm: bn x bn A matrix for PML's b x n subgrid for layer m
-def get_Hm(m, b, const, eta, h):
+def get_Hm(m, b, const, eta, omega, h, n):
 	c1_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c2_vec = np.zeros((b*n-1,), dtype=np.cdouble)
 	c3_vec = np.zeros((b*n-n,), dtype=np.cdouble)
@@ -208,35 +208,35 @@ def get_Hm(m, b, const, eta, h):
 		for i in range(1, n+1):
 			x1 = (i-.5)*h
 			x2 = j*h
-			c1 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
+			c1 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
 			if row_i >= 2:
 				c1_vec[c1_idx] = c1
 				c1_idx += 1
 
 			x1 = (i+.5)*h
 			x2 = j*h
-			c2 = 1/h**2 * (s1(x1,const,eta) / s2m(x2,m,b,const,eta))
+			c2 = 1/h**2 * (s1(x1,const,eta,omega) / s2m(x2,m,b,const,eta,omega,h))
 			if row_i <= b*n - 1:
 				c2_vec[c2_idx] = c2
 				c2_idx += 1
 
 			x1 = i*h
 			x2 = (j-.5)*h
-			c3 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			c3 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
 			if row_i >= n+1:
 				c3_vec[c3_idx] = c3
 				c3_idx += 1
 
 			x1 = i*h
 			x2 = (j+.5)*h
-			c4 = 1/h**2 * (s2m(x2,m,b,const,eta) / s1(x1,const,eta))
+			c4 = 1/h**2 * (s2m(x2,m,b,const,eta,omega,h) / s1(x1,const,eta,omega))
 			if row_i <= b*n - n:
 				c4_vec[c4_idx] = c4
 				c4_idx += 1
 
 			x1 = i*h
 			x2 = j*h
-			c5 = omega**2 / (s1(x1,const,eta)*s2m(x2,m,b,const,eta)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
+			c5 = omega**2 / (s1(x1,const,eta,omega)*s2m(x2,m,b,const,eta,omega,h)*c_mat[i-1,j-1]**2) - (c1 + c2 + c3 + c4)
 			c5_vec[c5_idx] = c5
 			c5_idx += 1
 
@@ -253,16 +253,16 @@ def get_Hm(m, b, const, eta, h):
 	return A
 
 
-def algo2_1(const, eta, h):
-	S1 = get_A_block(1,1,True,0,b,const,eta,h).A
+def algo2_1(const, eta, omega, h, n):
+	S1 = get_A_block(1,1,True,0,b,const,eta,omega,h,n).A
 	T = scipy.linalg.inv(S1)
 
 	S_ra = [S1]
 	T_ra = [T]
 	for m in range(2,n+1):
-		Amm = get_A_block(m,m,True,0,b,const,eta,h).A
-		Amm1 = get_A_block(m,m-1,True,0,b,const,eta,h).A
-		Am1m = get_A_block(m-1,m,True,0,b,const,eta,h).A
+		Amm = get_A_block(m,m,True,0,b,const,eta,omega,h,n).A
+		Amm1 = get_A_block(m,m-1,True,0,b,const,eta,omega,h,n).A
+		Am1m = get_A_block(m-1,m,True,0,b,const,eta,omega,h,n).A
 		Sm = Amm - Amm1@T@Am1m
 		T = scipy.linalg.inv(Sm)
 		S_ra.append(Sm)
@@ -273,7 +273,7 @@ def algo2_1(const, eta, h):
 	L_ra = []
 	for k in range(1,n):
 		L = np.eye(n**2,dtype=np.cdouble)
-		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,0,b,const,eta,h)@T_ra[k-1]
+		L[k*n:(k+1)*n,(k-1)*n:k*n] = get_A_block(k+1,k,True,0,b,const,eta,omega,h,n)@T_ra[k-1]
 		L_ra.append(L)
 	A_rebuilt = np.eye(n**2,dtype=np.cdouble)
 	for i in range(1,n):
@@ -282,36 +282,35 @@ def algo2_1(const, eta, h):
 	for i in range(n-1,0,-1):
 		A_rebuilt = A_rebuilt@(L_ra[i-1].T)
 	diff = A_rebuilt - A
-	print('diff:')
-	print(np.imag(diff))
-	print("A_rebuilt:")
-	print(np.imag(A_rebuilt))
-	print("A:")
-	print(np.imag(A.A))
+	# print('diff:')
+	# print(np.real(diff))
+	# print("A_rebuilt:")
+	# print(np.real(A_rebuilt))
+	# print("A:")
+	# print(np.real(A))
 	print("real part max diff = " + str(np.max(np.abs(np.real(diff)))))
 	print("imag part max diff = " + str(np.max(np.abs(np.imag(diff)))))
 	print("max diff magnitude = " + str(np.max(np.abs(diff))))
-	sys.exit()
 	return T_ra, S_ra, L_ra, A_rebuilt
 
 
-def algo2_2(T_ra, S_ra, L_ra, const, eta):
+def algo2_2(T_ra, S_ra, L_ra, const, eta, omega, n):
 	u = np.copy(f_mat).astype(np.cdouble)
 	for m in range(1,n):
-		u[m] = u[m] - get_A_block(m+1,m,True,0,b,const,eta,h).A@T_ra[m-1]@u[m-1]
+		u[m] = u[m] - get_A_block(m+1,m,True,0,b,const,eta,omega,h,n).A@T_ra[m-1]@u[m-1]
 	for m in range(1,n+1):
 		u[m-1] = T_ra[m-1]@u[m-1]
 	for m in range(n-1,0,-1):
-		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,b,const,eta,h)@u[m]
+		u[m-1] = u[m-1] - T_ra[m-1]@get_A_block(m,m+1,True,0,b,const,eta,omega,h,n)@u[m]
 	return u
 
 
-def algo2_3_lu(b, const, eta, h):
-	HF = get_A_FF_block(b,const,eta,h).tocsc()
+def algo2_3_lu(b, const, eta, omega, h, n):
+	HF = get_A_FF_block(b,const,eta,omega,h,n).tocsc()
 	lu_HF = scipy.sparse.linalg.splu(HF)
 	lu_Hm_ra = []
 	for m in range(b+1,n+1):
-		Hm = get_Hm(m,b,const,eta,h).tocsc()
+		Hm = get_Hm(m,b,const,eta,omega,h,n).tocsc()
 		lu_Hm = scipy.sparse.linalg.splu(Hm)
 		lu_Hm_ra.append(lu_Hm)
 	return lu_HF, lu_Hm_ra
@@ -359,33 +358,43 @@ if __name__ == "__main__":
 
 	n = 127 # interior grid size
 	h = 1 / (n + 1) # spatial step size
-	b =  12 # width of PML in number of grid points
+	b = 12 # width of PML in number of grid points
 	eta = b*h # width of PML in spatial dim
 
 	u_mat = np.zeros((n,n))
 	r1 = .5
 	r2 = .5
-	f_mat = init_f1_mat(r1,r2)
+	f_mat = init_f1_mat(r1,r2,omega,n)
 	f_vec = f_mat.flatten()
-	c_mat = init_c1_mat(r1,1/8)
+	c_mat = init_c1_mat(r1,1/8,n)
 
-	A = build_A_matrix(True,0,b,const,eta,h)
+	A = build_A_matrix(b,const,eta,omega,h,n)
 
-	lu_HF, lu_Hm_ra = algo2_3_lu(b,const,eta,h)
+	# test LDL factorization of A
+	"""
+	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(const,eta,omega,h,n)
+	u_solved = algo2_2(T_ra, S_ra, L_ra,const, eta, omega, n)
+	plt.imshow(np.real(u_solved))
+	plt.show()
+	sys.exit()
+	"""
 
-	A_b1F = get_A_b1F_block(True,0,b,const,eta,h)
-	A_Fb1 = get_A_Fb1_block(True,0,b,const,eta,h)
+	lu_HF, lu_Hm_ra = algo2_3_lu(b,const,eta,omega,h,n)
+
+	# prepare A blocks to be used in the preconditioner
+	A_b1F = get_A_b1F_block(b,const,eta,omega,h,n)
+	A_Fb1 = get_A_Fb1_block(b,const,eta,omega,h,n)
 	up_A_ra = []
 	lo_A_ra = []
 	for i in range(1,n):
 		if i <= b:
-			A_up = get_A_block(i,i+1,True,0,b,const,eta,h)
-			A_lo = get_A_block(i+1,i,True,0,b,const,eta,h)
+			A_up = get_A_block(i,i+1,True,0,b,const,eta,omega,h,n)
+			A_lo = get_A_block(i+1,i,True,0,b,const,eta,omega,h,n)
 			up_A_ra.append(A_up)
 			lo_A_ra.append(A_lo)
 		else:
-			A_up = get_A_block(i,i+1,False,i,b,const,eta,h)
-			A_lo = get_A_block(i+1,i,False,i,b,const,eta,h)
+			A_up = get_A_block(i,i+1,False,i,b,const,eta,omega,h,n)
+			A_lo = get_A_block(i+1,i,False,i,b,const,eta,omega,h,n)
 			up_A_ra.append(A_up)
 			lo_A_ra.append(A_lo)
 	
