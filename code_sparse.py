@@ -42,6 +42,13 @@ def init_c1_mat(r1,r2,n):
 	c_mat = 4/3 * (1-.5*np.exp(-32*((xx-r1)**2 + (yy-r2)**2)))
 	return c_mat
 
+# velocity field 2 described in paper
+def init_c2_mat(n):
+	x_i = np.linspace(0,1,n+2)
+	xx, yy = np.meshgrid(x_i,x_i)
+	c_mat = 4/3 * (1-.5*np.exp(-32*((xx-.5)**2)))
+	return c_mat
+
 # external force 1 described in paper
 def init_f1_mat(r1,r2,omega,n):
 	x_i = np.linspace(0,1,n+2) # n+2 points in each dimension, including boundary
@@ -49,6 +56,13 @@ def init_f1_mat(r1,r2,omega,n):
 	f_mat = np.exp(-(4*omega/np.pi)**2*((xx-r1)**2 + (yy-r2)**2))
 	return f_mat
 
+# external force 2 described in paper
+def init_f2_mat(r1,r2,d1,d2,omega,n):
+	x_i = np.linspace(0,1,n+2) # n+2 points in each dimension, including boundary
+	xx, yy = np.meshgrid(x_i[1:-1],x_i[1:-1]) # n interior points
+	f_mat = np.exp(-4*omega*((xx-r1)**2 + (yy-r2)**2)) \
+			* np.exp(1j*omega*(xx*d1 + yy*d2))
+	return f_mat
 
 # helper function for get_A_diag_block()
 @jit(nopython=True)
@@ -370,23 +384,45 @@ def algo2_4(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
 	return u
 
 
-def run_solver(n,b,wave_num,const,alpha):
+# initialize c_mat and f_mat used in paper
+# default arg values are those used in the paper
+def init_c1_f1(omega, n, cr1=.5, cr2=.5, fr1=.5, fr2=.125):
+	c_mat = init_c1_mat(cr1, cr2, n)
+	f_mat = init_f1_mat(fr1, fr2, omega, n)
+	return c_mat, f_mat
+
+def init_c1_f2(omega, n, cr1=.5, cr2=.5, fr1=.125, fr2=.125, d1=1/2**.5, d2=1/2**.5):
+	c_mat = init_c1_mat(cr1, cr2, n)
+	f_mat = init_f2_mat(fr1, fr2, d1, d2, omega, n)
+	return c_mat, f_mat
+
+def init_c2_f1(omega, n, r1=.5, r2=.5):
+	c_mat = init_c2_mat(n)
+	f_mat = init_f1_mat(r1, r2, omega, n)
+	return c_mat, f_mat
+
+def init_c2_f2(omega, n, r1=.5, r2=.5, d1=1/2**.5, d2=1/2**.5):
+	c_mat = init_c2_mat(n)
+	f_mat = init_f2_mat(r1, r2, d1, d2, omega, n)
+	return c_mat, f_mat
+
+
+def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
 	"""
 	n: interior grid size
 	b: width of PML in number of grid points
 	wave_num: omega/2pi (avg wave number)
 	const: appropriate positive constant for sigma1, sigma2
 	alpha: small positive constant to adjust omega (paper uses alpha=2)
+	init_func: function to initialize c_mat and f_mat described in paper
 	"""
 
 	omega = 2*np.pi*wave_num + 1j*alpha # angular frequency
 	h = 1 / (n + 1) # spatial step size
 	eta = b*h # width of PML in spatial dim
-	r1 = .5
-	r2 = .5
-	f_mat = init_f1_mat(r1,r2,omega,n)
+
+	c_mat, f_mat = init_func(omega, n)
 	f_vec = f_mat.flatten()
-	c_mat = init_c1_mat(r1,1/8,n)
 
 	A = build_A_matrix(b,const,eta,omega,h,n,c_mat)
 
@@ -410,7 +446,7 @@ def run_solver(n,b,wave_num,const,alpha):
 	"""
 	#------------------------------------------------------------------------------
 
-	# use preconditioner:
+	#-------- use preconditioner ----------
 
 	lu_HF, lu_Hm_ra = algo2_3(b,const,eta,omega,h,n,c_mat)
 
@@ -447,8 +483,19 @@ def run_solver(n,b,wave_num,const,alpha):
 
 
 if __name__ == "__main__":
-	# run_solver(31,12,4,80,2)
-	# run_solver(127,12,16,80,2)
-	run_solver(255,12,32,50,2)
-	# run_solver(1023,12,128,90,2) # 80 had large numbers
+	"""
+	args order:
+	n, b, omega/2pi, const, alpha, init_func
+	"""
+
+	# run_solver(31,12,4,80,2,init_c1_f1)
+	# run_solver(127,12,16,80,2,init_c1_f1)
+
+	# run_solver(255,12,32,60,2,init_c1_f1)
+	# run_solver(255,12,32,60,2,init_c1_f2)
+	# run_solver(255,12,32,80,2,init_c2_f1)
+	# run_solver(255,12,32,100,2,init_c2_f2)
+
+	# run_solver(1023,12,128,100,2,init_c1_f1) # takes about 1-2 minutes to run
+	run_solver(1023,12,128,100,2,init_c1_f2) 
 
