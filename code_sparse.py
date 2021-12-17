@@ -353,13 +353,12 @@ def algo2_3(b, const, eta, omega, h, n, c_mat):
 
 
 def algo2_4(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra):
-	f_mat = f_vec.reshape((n,n))
 	uF = np.zeros((b,n), dtype=np.cdouble)
 	for i in range(b):
-		uF[i] = f_mat[i]
+		uF[i] = f_vec[i*n:(i+1)*n]
 	um_ra = np.zeros((n-b,n), dtype=np.cdouble)
 	for i in range(n-b):
-		um_ra[i] = f_mat[i+b]
+		um_ra[i] = f_vec[(i+b)*n:(i+b+1)*n]
 	u = np.vstack((uF, um_ra))
 	TFuF = lu_HF.solve(uF.flatten())
 	u[b] = u[b] - A_b1F@TFuF
