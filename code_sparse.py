@@ -417,6 +417,12 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	init_func: function to initialize c_mat and f_mat described in paper
 	"""
 
+	# for counting number of gmres iterations with preconditioner
+	counter_prec = gmres_counter(True)
+
+	# for counting number of gmres iterations without preconditioner
+	counter = gmres_counter(True)
+
 	init_time_start = time.time()
 
 	omega = 2*np.pi*wave_num + 1j*alpha # angular frequency
@@ -428,6 +434,26 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	f_vec = f_mat.flatten()
 
 	A = build_A_matrix(b,const,eta,omega,h,n,c_mat)
+
+	# ----------- Test solution without using the preconditioner -------------
+	"""
+	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-1, callback=counter)
+	print("GMRES iterations without preconditioner: " + str(counter.niter))
+	u = np.flipud(u.reshape((n,n)))
+	fig = plt.figure()
+	plt.imshow(np.real(u), extent=[0,1,0,1])
+	plt.xlabel('x')
+	plt.ylabel('y')
+	t = 'N = ' + str(n) + '$^2$ \n $\omega /(2\pi)$ = ' \
+			+ str(wave_num) + ' \n const = ' + str(const) + ' \n Real(u)'
+	plt.title(t)
+	plt.colorbar()
+	plt.tight_layout()
+	fig.subplots_adjust(left=-0.4)
+	plt.show()
+	# sys.exit()
+	"""
+	# ------------------------------------------------------------------------
 
 
 	#--- Test LDL factorization of A and plot the solution using algos 2.1, 2.2 -----
@@ -449,6 +475,7 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	# sys.exit()
 	"""
 	#------------------------------------------------------------------------------
+
 
 	#-------- use preconditioner with moving PML ----------
 
@@ -472,9 +499,11 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 
 	init_time_end = time.time()
 
-	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3)
+	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3, callback=counter_prec)
 
 	solve_time_end = time.time()
+
+	print("GMRES iterations with preconditioner: " + str(counter_prec.niter))
 
 	init_time_length = init_time_end - init_time_start
 	solve_time_length = solve_time_end - init_time_end
@@ -498,6 +527,18 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	return init_time_length, solve_time_length
 
 
+# https://stackoverflow.com/questions/33512081/getting-the-number-of-iterations-of-scipys-gmres-iterative-method
+# counts number of gmres iterations
+class gmres_counter(object):
+    def __init__(self, disp=True):
+        self._disp = disp
+        self.niter = 0
+    def __call__(self, rk=None):
+        self.niter += 1
+        if self._disp:
+            print('iter %3i\trk = %s' % (self.niter, str(rk)))
+
+
 if __name__ == "__main__":
 	"""
 
@@ -508,7 +549,7 @@ if __name__ == "__main__":
 
 	"""
 
-	init_time_127_c1f1, solve_time_127_c1f1 = run_solver(127, 12, 16, 81, 2, init_c1_f1, True)
+	init_time_255_c1f1, solve_time_255_c1f1 = run_solver(63, 12, 4, 62, 2, init_c1_f1, True)
 	sys.exit()
 
 	init_time_127_c1f1, solve_time_127_c1f1 = run_solver(127, 12, 16, 81, 2, init_c1_f1, False)
