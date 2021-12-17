@@ -408,7 +408,7 @@ def init_c2_f2(omega, n, r1=.5, r2=.5, d1=1/2**.5, d2=1/2**.5):
 	return c_mat, f_mat
 
 
-def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
+def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution=True):
 	"""
 	n: interior grid size
 	b: width of PML in number of grid points
@@ -482,47 +482,70 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
 	print("Initialization time = " + str(init_time_length))
 	print("GMRES solve time = " + str(solve_time_length))
 
-
-	u = np.flipud(u.reshape((n,n)))
-	fig = plt.figure()
-	plt.imshow(np.real(u), extent=[0,1,0,1])
-	plt.xlabel('x')
-	plt.ylabel('y')
-	t = 'N = ' + str(n) + '$^2$ \n $\omega /(2\pi)$ = ' \
-			+ str(wave_num) + ' \n const = ' + str(const) + ' \n Real(u)'
-	plt.title(t)
-	plt.colorbar()
-	plt.tight_layout()
-	fig.subplots_adjust(left=-0.4)
-	plt.show()
+	if plot_solution:
+		u = np.flipud(u.reshape((n,n)))
+		fig = plt.figure()
+		plt.imshow(np.real(u), extent=[0,1,0,1])
+		plt.xlabel('x')
+		plt.ylabel('y')
+		t = 'N = ' + str(n) + '$^2$ \n $\omega /(2\pi)$ = ' \
+				+ str(wave_num) + ' \n const = ' + str(const) + ' \n Real(u)'
+		plt.title(t)
+		plt.colorbar()
+		plt.tight_layout()
+		fig.subplots_adjust(left=-0.4)
+		plt.show()
 
 	return init_time_length, solve_time_length
 
 
 if __name__ == "__main__":
 	"""
+
 	args order:
-	n, b, omega/2pi, const, alpha, init_func
+	n, b, omega/2pi, const, alpha, init_func, plot_solution
+
+	note: N = n^2
+
 	"""
 
-	# run_solver(127, 12, 16, 81, 2, init_c1_f1)
-	# run_solver(127, 12, 16, 61, 2, init_c1_f2)
-	# run_solver(127, 12, 16, 80, 2, init_c2_f1)
-	# run_solver(127, 12, 16, 84.2, 2, init_c2_f2)
+	init_time_127_c1f1, solve_time_127_c1f1 = run_solver(127, 12, 16, 81, 2, init_c1_f1, True)
+	sys.exit()
 
-	# run_solver(255, 12, 32, 62, 2, init_c1_f1)
-	# run_solver(255, 12, 32, 61, 2, init_c1_f2)
-	# run_solver(255, 12, 32, 62, 2, init_c2_f1)
-	# run_solver(255, 12, 32, 100, 2, init_c2_f2)
+	init_time_127_c1f1, solve_time_127_c1f1 = run_solver(127, 12, 16, 81, 2, init_c1_f1, False)
+	# init_time_127_c1f2, solve_time_127_c1f2 = run_solver(127, 12, 16, 61, 2, init_c1_f2, False)
+	# init_time_127_c2f1, solve_time_127_c2f1 = run_solver(127, 12, 16, 80, 2, init_c2_f1, False)
+	# init_time_127_c2f2, solve_time_127_c2f2 = run_solver(127, 12, 16, 84.2, 2, init_c2_f2, False)
 
-	# run_solver(511, 12, 64, 81, 2, init_c1_f1)
-	# run_solver(511, 12, 64, 62, 2, init_c1_f2)
-	# run_solver(511, 12, 64, 63.5, 2, init_c2_f1)
-	# run_solver(511, 12, 64, 85, 2, init_c2_f2) # couldn't get this one to work
+	init_time_255_c1f1, solve_time_255_c1f1 = run_solver(255, 12, 32, 62, 2, init_c1_f1, False)
+	# init_time_255_c1f2, solve_time_255_c1f2 = run_solver(255, 12, 32, 61, 2, init_c1_f2, False)
+	# init_time_255_c2f1, solve_time_255_c2f1 = run_solver(255, 12, 32, 62, 2, init_c2_f1, False)
+	# init_time_255_c2f2, solve_time_255_c2f2 = run_solver(255, 12, 32, 100, 2, init_c2_f2, False)
+
+	init_time_511_c1f1, solve_time_511_c1f1 = run_solver(511, 12, 64, 81, 2, init_c1_f1, False)
+	# init_time_511_c1f2, solve_time_511_c1f2 = run_solver(511, 12, 64, 62, 2, init_c1_f2, False)
+	# init_time_511_c2f1, solve_time_511_c2f1 = run_solver(511, 12, 64, 63.5, 2, init_c2_f1, False)
+	# init_time_511_c2f2, solve_time_511_c2f2 = un_solver(511, 12, 64, 85, 2, init_c2_f2, False) # couldn't get this one to work
 
 	# ----- each one below takes about 1 minute to run -----
-	# run_solver(1023, 12, 128, 100, 2, init_c1_f1)
-	# run_solver(1023, 12, 128, 100.6, 2, init_c1_f2)
-	run_solver(1023, 12, 128, 101, 2, init_c2_f1)   # solution has large values
-	# run_solver(1023, 12, 128, 1000, 2, init_c2_f2) # couldn't get this one to work
+	# init_time_1023_c1f1, solve_time_1023_c1f1 = run_solver(1023, 12, 128, 100, 2, init_c1_f1, False)
+	# init_time_1023_c1f2, solve_time_1023_c1f2 = run_solver(1023, 12, 128, 100.6, 2, init_c1_f2, False)
+	# init_time_1023_c2f1, solve_time_1023_c2f1 = run_solver(1023, 12, 128, 100, 2, init_c2_f1, False)  # solution has large values
+	# init_time_1023_c2f2, solve_time_1023_c2f2 = run_solver(1023, 12, 128, 1000, 2, init_c2_f2, False) # couldn't get this one to work
+
+	solve_time_c1f1_ra = np.array([solve_time_127_c1f1, solve_time_255_c1f1, solve_time_511_c1f1])#, solve_time_1023_c1f1])
+	init_time_c1f1_ra = np.array([init_time_127_c1f1, init_time_255_c1f1, init_time_511_c1f1])#, init_time_1023_c1f1])
+	total_time_c1f1_ra = solve_time_c1f1_ra + init_time_c1f1_ra
+	n_ra = np.array([127, 255, 511])
+	N_ra = n_ra ** 2
+	# N_ra = [127**2, 255**2, 511**2]#, 1023**2]
+	plt.plot(N_ra, solve_time_c1f1_ra, 'b-o')
+	plt.plot(N_ra, init_time_c1f1_ra, 'g-o')
+	plt.plot(N_ra, total_time_c1f1_ra, 'r-o')
+	plt.plot(N_ra, [N for N in N_ra], 'k--' )
+	plt.xlabel("N")
+	plt.ylabel("Time (s)")
+	plt.legend(["Solve Time", "Init Time", "Total Time" , "O(N)"])
+	plt.title("GMRES Solve Runetime")
+	plt.show()
 
