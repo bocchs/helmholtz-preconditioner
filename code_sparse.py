@@ -6,6 +6,7 @@ import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 import scipy.sparse
 from numba import jit
+import time
 
 @jit(nopython=True)
 def sigma1(x,const,eta):
@@ -417,17 +418,21 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
 	init_func: function to initialize c_mat and f_mat described in paper
 	"""
 
+	init_time_start = time.time()
+
 	omega = 2*np.pi*wave_num + 1j*alpha # angular frequency
 	h = 1 / (n + 1) # spatial step size
 	eta = b*h # width of PML in spatial dim
 
+	# initialize velocity field and external force
 	c_mat, f_mat = init_func(omega, n)
 	f_vec = f_mat.flatten()
 
 	A = build_A_matrix(b,const,eta,omega,h,n,c_mat)
 
 
-	#--- test LDL factorization of A and plot the solution using algos 2.1, 2.2 -----
+	#--- Test LDL factorization of A and plot the solution using algos 2.1, 2.2 -----
+	#--- Not used in faster solver with moving PML ---
 	"""
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(b,const,eta,omega,h,n,c_mat)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const, eta, omega, b, h, n, c_mat, f_mat)
@@ -446,7 +451,7 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
 	"""
 	#------------------------------------------------------------------------------
 
-	#-------- use preconditioner ----------
+	#-------- use preconditioner with moving PML ----------
 
 	lu_HF, lu_Hm_ra = algo2_3(b,const,eta,omega,h,n,c_mat)
 
@@ -466,7 +471,17 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
 			algo2_4(f_vec, b, n, lu_HF, A_b1F, A_Fb1, up_A_ra, lo_A_ra, lu_Hm_ra))
 
 
+	init_time_end = time.time()
+
 	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, M=M, tol=1e-3)
+
+	solve_time_end = time.time()
+
+	init_time_length = init_time_end - init_time_start
+	solve_time_length = solve_time_end - init_time_end
+	print("Initialization time = " + str(init_time_length))
+	print("GMRES solve time = " + str(solve_time_length))
+
 
 	u = np.flipud(u.reshape((n,n)))
 	fig = plt.figure()
@@ -481,6 +496,8 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1):
 	fig.subplots_adjust(left=-0.4)
 	plt.show()
 
+	return init_time_length, solve_time_length
+
 
 if __name__ == "__main__":
 	"""
@@ -488,14 +505,24 @@ if __name__ == "__main__":
 	n, b, omega/2pi, const, alpha, init_func
 	"""
 
-	# run_solver(31,12,4,80,2,init_c1_f1)
-	# run_solver(127,12,16,80,2,init_c1_f1)
+	# run_solver(127, 12, 16, 81, 2, init_c1_f1)
+	# run_solver(127, 12, 16, 61, 2, init_c1_f2)
+	# run_solver(127, 12, 16, 80, 2, init_c2_f1)
+	# run_solver(127, 12, 16, 84.2, 2, init_c2_f2)
 
-	# run_solver(255,12,32,60,2,init_c1_f1)
-	# run_solver(255,12,32,60,2,init_c1_f2)
-	# run_solver(255,12,32,80,2,init_c2_f1)
-	# run_solver(255,12,32,100,2,init_c2_f2)
+	# run_solver(255, 12, 32, 62, 2, init_c1_f1)
+	# run_solver(255, 12, 32, 61, 2, init_c1_f2)
+	# run_solver(255, 12, 32, 62, 2, init_c2_f1)
+	# run_solver(255, 12, 32, 100, 2, init_c2_f2)
 
-	# run_solver(1023,12,128,100,2,init_c1_f1) # takes about 1-2 minutes to run
-	run_solver(1023,12,128,100,2,init_c1_f2) 
+	# run_solver(511, 12, 64, 81, 2, init_c1_f1)
+	# run_solver(511, 12, 64, 62, 2, init_c1_f2)
+	# run_solver(511, 12, 64, 63.5, 2, init_c2_f1)
+	# run_solver(511, 12, 64, 85, 2, init_c2_f2) # couldn't get this one to work
+
+	# ----- each one below takes about 1 minute to run -----
+	# run_solver(1023, 12, 128, 100, 2, init_c1_f1)
+	# run_solver(1023, 12, 128, 100.6, 2, init_c1_f2)
+	run_solver(1023, 12, 128, 101, 2, init_c2_f1)   # solution has large values
+	# run_solver(1023, 12, 128, 1000, 2, init_c2_f2) # couldn't get this one to work
 
