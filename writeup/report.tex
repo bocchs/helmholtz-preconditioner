@@ -92,14 +92,13 @@ PML boundary conditions. The Helmholtz system can be represented by $Au=f$.
 The $A$ matrix can be block-$LDL^T$ factorized and inverted, providing a starting point to 
 build $M$ (the preconditioner of $A$).
 $S_m$ is the $m$th block (of size $n$ x $n$) in $D$ that corresponds to the $m$th layer (row) in the grid. 
-An operator $T_m=S_m^{-1}$ is introduced. The application of $T_m$ 
-is efficiently approximated by solving the Helmholtz system on a $b$ x $n$ subgrid below the $(m+1)$th layer
-of the grid, where $b$ is the height of the PML in grid points. This subgrid contains the 
+An operator $T_m=S_m^{-1}$ is introduced and approximated by $\tilde{T}_m$. 
+$\tilde{T}_m$ is efficiently applied by solving the Helmholtz system on a $b$ x $n$ 
+subgrid below the $(m+1)$th layer of the grid, where $b$ is the height of the PML in grid points. 
+This subgrid contains the 
 PML that has been moved up from the bottom of the grid to the $m$th layer. The system
-in this subgrid can be solved efficiently with LU factorization. Overall, the solution
-in the full grid is efficiently computed in the bottom-up direction while incorporating 
-PML's in each subgrid. Algorithm 2.3 implicitly defines $\tilde{T}_m \approx T_m$. 
-Algorithm 2.4 describes how to apply $M$ (including how to apply $\tilde{T}_m$) in about $O(N)$ time. 
+in this subgrid can be solved efficiently with LU factorization.  
+Algorithm 2.3 implicitly defines $\tilde{T}_m$ for each layer, and Algorithm 2.4 describes how to apply $M$ (including how to apply $\tilde{T}_m$) in about $O(N)$ time. 
 
 Now that $M$ can be applied efficiently, GMRES is used to solve $MAu=Mf$. The preconditioned system
 converges to the solution extremely fast compared to the non-preconditioned system.
