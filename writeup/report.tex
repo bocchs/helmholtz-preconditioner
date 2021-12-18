@@ -55,13 +55,15 @@ time and $O(N^{4/3})$ space \cite{engquist2011matrix}. Direct methods also suffe
 from fill-in \cite{erlangga2008advances} that occurs during the Gaussian elimination process.
 \fi
 
-In this project, I implement the sweeping preconditioner with the moving PML as 
-described in \cite{engquist2011pml}. The general method is as follows.
-Work in the 2D domain $(x_1, x_2) \in (0,1)^2$ discretized on an $n$ x $n$ grid where the number 
-of grid points $N=n^2$. 
-Assume Dirichlet zero boundary conditions at $x_2=1$. Approximations to the Sommerfeld 
-boundary conditions are imposed on the other three sides (absorbing layers) using a PML 
-(equations provided in the paper).
+In this project, I implement the sweeping preconditioner with moving PML for solving the 
+2D Helmholtz equation using the method in \cite{engquist2011pml}. 
+The paper first describes the $LDL^T$ factorization for computing the solution in $O(N^2)$ with a 
+\emph{stationary} PML in Algorithms 2.1 and 2.2.
+Then, the paper describes the sweeping factorization of A with a \emph{moving} PML,
+where smaller layers of the grid can be solved in linear time. This is
+detailed in Algorithms 2.3 and 2.4. Ultimately, this method takes about $O(N)$ time.
+
+\iffalse
 A 5-point stencil is used to generate the $A$ matrix, which can be block-$LDL^T$-factorized. 
 This factorization eliminates unknowns layer by layer, starting from $x_2=0$ (hence ``sweeping 
 factorization''). 
@@ -75,15 +77,37 @@ with zero boundary at $x_2=(m+1)h$. $T_m$ maps an external force loaded on the $
 to the solution in the $m$th layer. Therefore, for approximating $T_m$, the PML can be 
 moved up from $x_2=0$ to $x_2=mh$. The approximation to $T_m$ can be solved for efficiently
 in a small subgrid where the moved PML lies (by the $m$th layer) and applied
-efficiently. 
-In the paper, Algorithm 2.3 describes the sweeping factorization of $A$ with moving PML, and 
-Algorithm 2.4 describes the preconditioner $M$ using the sweeping factorization with moving PML, 
-where $M$ is an approximate inverse of $A$. $u$ is solved for in the preconditioned system 
-$MAu=Mf$ using GMRES.
-Overall, the algorithm solves $\Delta u(x) + \frac{(\omega+i\alpha)^2}{c^2(x)}u(x)=f(x)$ in 
-about $O(N)$ time, where $\alpha$ is a small constant ($\alpha$=2).
+efficiently.
+\fi
+
+\section{Methods}
+In general, the moving PML preconditioner is as follows.
+Work in the 2D domain $(x_1, x_2) \in (0,1)^2$ discretized on an $n$ x $n$ grid where the number 
+of interior grid points $N=n^2$. 
+Assume Dirichlet zero boundary conditions at $x_2=1$. Approximations to the Sommerfeld 
+boundary conditions are imposed on the other three sides (absorbing layers) using a PML. 
+The paper provides the 5-point stencil for building the $A$ matrix along with the
+PML boundary conditions. The Helmholtz system can be represented by $Au=f$.
+
+The $A$ matrix can be block-$LDL^T$ factorized and inverted, providing a starting point to 
+build $M$ (the preconditioner of $A$).
+$S_m$ is the $m$th block (of size $n$ x $n$) in $D$ that corresponds to the $m$th layer (row) in the grid. 
+An operator $T_m=S_m^{-1}$ is introduced. The application of $T_m$ 
+is efficiently approximated by solving the Helmholtz system on a $b$ x $n$ subgrid below the $(m+1)$th layer
+of the grid, where $b$ is the height of the PML in grid points. This subgrid contains the 
+PML that has been moved up from the bottom of the grid to the $m$th layer. The system
+in this subgrid can be solved efficiently with LU factorization. Overall, the solution
+in the full grid is efficiently computed in the bottom-up direction while incorporating 
+PML's in each subgrid. Algorithm 2.3 implicitly defines $\tilde{T}_m \approx T_m$. 
+Algorithm 2.4 describes how to apply $M$ (including how to apply $\tilde{T}_m$) in about $O(N)$ time. 
+
+Now that $M$ can be applied efficiently, GMRES is used to solve $MAu=Mf$. The preconditioned system
+converges to the solution extremely fast compared to the non-preconditioned system.
+
+\section{Experiments}
 
 
+\section{Results}
 Constant value $C$ is important. I had to tune this constant for each example setup to obtain a 
 proper solution. I would try many values for $C$, and most ended up giving me a garbage solution. 
 When I found a $C$ that gave me a visually correct solution, the solution values were either very
