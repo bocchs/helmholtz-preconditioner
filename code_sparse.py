@@ -65,6 +65,7 @@ def init_f2_mat(r1,r2,d1,d2,omega,n):
 			* np.exp(1j*omega*(xx*d1 + yy*d2))
 	return f_mat
 
+
 # helper function for get_A_diag_block()
 @jit(nopython=True)
 def get_A_diag_block_coeffs(a, b, const, eta, omega, h, n, c_mat):
@@ -153,7 +154,7 @@ def get_lower_A_block(row, col, b, const, eta, omega, h, n, c_mat):
 	return c3_vec
 
 
-# computes desired n x n block of A_row,col that corresponds to "col'th" row of the grid
+# computes desired n x n block of A_row,col
 # row,col = 1..n (indexes the block matrix)
 def get_A_block(row, col, b, const, eta, omega, h, n, c_mat):
 	assert(row >= 1 and row <= n and row >= 1 and row <= n)
@@ -407,6 +408,19 @@ def init_c2_f2(omega, n, r1=.5, r2=.5, d1=1/2**.5, d2=1/2**.5):
 	return c_mat, f_mat
 
 
+# https://stackoverflow.com/questions/33512081/getting-the-number-of-iterations-of-scipys-gmres-iterative-method
+# counts number of gmres iterations
+class gmres_counter(object):
+    def __init__(self, disp=True):
+        self._disp = disp
+        self.niter = 0
+    def __call__(self, rk=None):
+        self.niter += 1
+        if self._disp:
+            print('iter %3i\trk = %s' % (self.niter, str(rk)))
+
+
+
 def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution=True):
 	"""
 	n: interior grid size
@@ -418,10 +432,10 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	"""
 
 	# for counting number of gmres iterations with preconditioner
-	counter_prec = gmres_counter(True)
+	counter_prec = gmres_counter(False)
 
 	# for counting number of gmres iterations without preconditioner
-	counter = gmres_counter(True)
+	counter = gmres_counter(False)
 
 	init_time_start = time.time()
 
@@ -437,7 +451,7 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 
 	# ----------- Test solution without using the preconditioner -------------
 	"""
-	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-1, callback=counter)
+	u, exit_code = scipy.sparse.linalg.gmres(A, f_vec, tol=1e-3, callback=counter)
 	print("GMRES iterations without preconditioner: " + str(counter.niter))
 	u = np.flipud(u.reshape((n,n)))
 	fig = plt.figure()
@@ -457,7 +471,7 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 
 
 	#--- Test LDL factorization of A and plot the solution using algos 2.1, 2.2 -----
-	#--- Not used in faster solver with moving PML ---
+	#--- Not used in preconditioner with moving PML ---
 	"""
 	T_ra, S_ra, L_ra, A_rebuilt = algo2_1(b,const,eta,omega,h,n,c_mat)
 	u_solved = algo2_2(T_ra, S_ra, L_ra,const, eta, omega, b, h, n, c_mat, f_mat)
@@ -477,7 +491,7 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	#------------------------------------------------------------------------------
 
 
-	#-------- use preconditioner with moving PML ----------
+	#-------- Use preconditioner with moving PML (algos 2.3, 2.4) ----------
 
 	lu_HF, lu_Hm_ra = algo2_3(b,const,eta,omega,h,n,c_mat)
 
@@ -527,65 +541,72 @@ def run_solver(n, b, wave_num, const, alpha, init_func=init_c1_f1, plot_solution
 	return init_time_length, solve_time_length
 
 
-# https://stackoverflow.com/questions/33512081/getting-the-number-of-iterations-of-scipys-gmres-iterative-method
-# counts number of gmres iterations
-class gmres_counter(object):
-    def __init__(self, disp=True):
-        self._disp = disp
-        self.niter = 0
-    def __call__(self, rk=None):
-        self.niter += 1
-        if self._disp:
-            print('iter %3i\trk = %s' % (self.niter, str(rk)))
+def plot_time(init_time_ra, solve_time_ra, n_ra):
+	total_time_ra = init_time_ra + solve_time_ra
+	N_ra = n_ra ** 2
+	plt.plot(N_ra, solve_time_ra, 'b-o')
+	plt.plot(N_ra, init_time_ra, 'g-o')
+	plt.plot(N_ra, total_time_ra, 'r-o')
+	# plt.plot(N_ra, [N for N in N_ra], 'k--' )
+	plt.xlabel("N")
+	plt.ylabel("Time (s)")
+	plt.legend(["Solve Time", "Init Time", "Total Time"])
+	plt.title("Runtime c2f2")
+	plt.show()
 
 
 if __name__ == "__main__":
 	"""
-
 	args order:
 	n, b, omega/2pi, const, alpha, init_func, plot_solution
 
 	note: N = n^2
-
 	"""
 
-	init_time_255_c1f1, solve_time_255_c1f1 = run_solver(63, 12, 4, 62, 2, init_c1_f1, True)
-	sys.exit()
+	plot_soln = False
 
-	init_time_127_c1f1, solve_time_127_c1f1 = run_solver(127, 12, 16, 81, 2, init_c1_f1, False)
-	# init_time_127_c1f2, solve_time_127_c1f2 = run_solver(127, 12, 16, 61, 2, init_c1_f2, False)
-	# init_time_127_c2f1, solve_time_127_c2f1 = run_solver(127, 12, 16, 80, 2, init_c2_f1, False)
-	# init_time_127_c2f2, solve_time_127_c2f2 = run_solver(127, 12, 16, 84.2, 2, init_c2_f2, False)
+	# --- Run this without preconditioner to see how many gmres iters required vs with preconditioner ---
+	# --- Have to uncomment code in run_solver() as well ---
+	# run_solver(63, 12, 4, 61, 2, init_c1_f1, plot_soln)
+	# sys.exit()
 
-	init_time_255_c1f1, solve_time_255_c1f1 = run_solver(255, 12, 32, 62, 2, init_c1_f1, False)
-	# init_time_255_c1f2, solve_time_255_c1f2 = run_solver(255, 12, 32, 61, 2, init_c1_f2, False)
-	# init_time_255_c2f1, solve_time_255_c2f1 = run_solver(255, 12, 32, 62, 2, init_c2_f1, False)
-	# init_time_255_c2f2, solve_time_255_c2f2 = run_solver(255, 12, 32, 100, 2, init_c2_f2, False)
 
-	init_time_511_c1f1, solve_time_511_c1f1 = run_solver(511, 12, 64, 81, 2, init_c1_f1, False)
-	# init_time_511_c1f2, solve_time_511_c1f2 = run_solver(511, 12, 64, 62, 2, init_c1_f2, False)
-	# init_time_511_c2f1, solve_time_511_c2f1 = run_solver(511, 12, 64, 63.5, 2, init_c2_f1, False)
-	# init_time_511_c2f2, solve_time_511_c2f2 = un_solver(511, 12, 64, 85, 2, init_c2_f2, False) # couldn't get this one to work
+	init_time_127_c1f1, solve_time_127_c1f1 = run_solver(127, 12, 16, 81, 2, init_c1_f1, plot_soln)
+	# init_time_127_c1f2, solve_time_127_c1f2 = run_solver(127, 12, 16, 61, 2, init_c1_f2, plot_soln)
+	# init_time_127_c2f1, solve_time_127_c2f1 = run_solver(127, 12, 16, 80, 2, init_c2_f1, plot_soln)
+	# init_time_127_c2f2, solve_time_127_c2f2 = run_solver(127, 12, 16, 84.2, 2, init_c2_f2, plot_soln)
 
-	# ----- each one below takes about 1 minute to run -----
-	# init_time_1023_c1f1, solve_time_1023_c1f1 = run_solver(1023, 12, 128, 100, 2, init_c1_f1, False)
-	# init_time_1023_c1f2, solve_time_1023_c1f2 = run_solver(1023, 12, 128, 100.6, 2, init_c1_f2, False)
-	# init_time_1023_c2f1, solve_time_1023_c2f1 = run_solver(1023, 12, 128, 100, 2, init_c2_f1, False)  # solution has large values
-	# init_time_1023_c2f2, solve_time_1023_c2f2 = run_solver(1023, 12, 128, 1000, 2, init_c2_f2, False) # couldn't get this one to work
+	init_time_255_c1f1, solve_time_255_c1f1 = run_solver(255, 12, 32, 62, 2, init_c1_f1, plot_soln)
+	# init_time_255_c1f2, solve_time_255_c1f2 = run_solver(255, 12, 32, 61, 2, init_c1_f2, plot_soln)
+	# init_time_255_c2f1, solve_time_255_c2f1 = run_solver(255, 12, 32, 62, 2, init_c2_f1, plot_soln)
+	# init_time_255_c2f2, solve_time_255_c2f2 = run_solver(255, 12, 32, 100, 2, init_c2_f2, plot_soln) # solution has large values
 
-	solve_time_c1f1_ra = np.array([solve_time_127_c1f1, solve_time_255_c1f1, solve_time_511_c1f1])#, solve_time_1023_c1f1])
-	init_time_c1f1_ra = np.array([init_time_127_c1f1, init_time_255_c1f1, init_time_511_c1f1])#, init_time_1023_c1f1])
-	total_time_c1f1_ra = solve_time_c1f1_ra + init_time_c1f1_ra
-	n_ra = np.array([127, 255, 511])
-	N_ra = n_ra ** 2
-	# N_ra = [127**2, 255**2, 511**2]#, 1023**2]
-	plt.plot(N_ra, solve_time_c1f1_ra, 'b-o')
-	plt.plot(N_ra, init_time_c1f1_ra, 'g-o')
-	plt.plot(N_ra, total_time_c1f1_ra, 'r-o')
-	plt.plot(N_ra, [N for N in N_ra], 'k--' )
-	plt.xlabel("N")
-	plt.ylabel("Time (s)")
-	plt.legend(["Solve Time", "Init Time", "Total Time" , "O(N)"])
-	plt.title("GMRES Solve Runetime")
-	plt.show()
+	init_time_511_c1f1, solve_time_511_c1f1 = run_solver(511, 12, 64, 81, 2, init_c1_f1, plot_soln)
+	# init_time_511_c1f2, solve_time_511_c1f2 = run_solver(511, 12, 64, 62, 2, init_c1_f2, plot_soln)
+	# init_time_511_c2f1, solve_time_511_c2f1 = run_solver(511, 12, 64, 63.5, 2, init_c2_f1, plot_soln)
+	# init_time_511_c2f2, solve_time_511_c2f2 = run_solver(511, 12, 64, 85, 2, init_c2_f2, plot_soln) # couldn't get this one to work
+
+	init_time_1023_c1f1, solve_time_1023_c1f1 = run_solver(1023, 12, 128, 100, 2, init_c1_f1, plot_soln)
+	# init_time_1023_c1f2, solve_time_1023_c1f2 = run_solver(1023, 12, 128, 100.6, 2, init_c1_f2, plot_soln) # this gets killed on my Linux desktop
+	# init_time_1023_c2f1, solve_time_1023_c2f1 = run_solver(1023, 12, 128, 100, 2, init_c2_f1, plot_soln)  # solution has large values
+	# init_time_1023_c2f2, solve_time_1023_c2f2 = run_solver(1023, 12, 128, 100, 2, init_c2_f2, plot_soln) # couldn't get this one to work
+
+
+	# --- plot runtimes ---
+	n_ra = np.array([127, 255, 511, 1023])
+	solve_time_c1f1_ra = np.array([solve_time_127_c1f1, solve_time_255_c1f1, solve_time_511_c1f1, solve_time_1023_c1f1])
+	init_time_c1f1_ra = np.array([init_time_127_c1f1, init_time_255_c1f1, init_time_511_c1f1, init_time_1023_c1f1])
+	plot_time(init_time_c1f1_ra, solve_time_c1f1_ra, n_ra)
+
+	# solve_time_c1f2_ra = np.array([solve_time_127_c1f2, solve_time_255_c1f2, solve_time_511_c1f2])#, solve_time_1023_c1f2])
+	# init_time_c1f2_ra = np.array([init_time_127_c1f2, init_time_255_c1f2, init_time_511_c1f2])#, init_time_1023_c1f2])
+	# plot_time(init_time_c1f2_ra, solve_time_c1f2_ra, n_ra)
+
+	# solve_time_c2f1_ra = np.array([solve_time_127_c2f1, solve_time_255_c2f1, solve_time_511_c2f1, solve_time_1023_c2f1])
+	# init_time_c2f1_ra = np.array([init_time_127_c2f1, init_time_255_c2f1, init_time_511_c2f1, init_time_1023_c2f1])
+	# plot_time(init_time_c2f1_ra, solve_time_c2f1_ra, n_ra)
+
+	# solve_time_c2f2_ra = np.array([solve_time_127_c2f2, solve_time_255_c2f2, solve_time_511_c2f2, solve_time_1023_c2f2])
+	# init_time_c2f2_ra = np.array([init_time_127_c2f2, init_time_255_c2f2, init_time_511_c2f2, init_time_1023_c2f2])
+	# plot_time(init_time_c2f2_ra, solve_time_c2f2_ra, n_ra)
 
